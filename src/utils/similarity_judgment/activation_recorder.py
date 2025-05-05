@@ -184,7 +184,7 @@ class RecordDistance(RecordActivations):
     def compute_from_annotation(
         self,
         transform,
-        matching_transform=False,
+        matching_transform=True,
         fill_bk=None,
         transf_boundaries="",
         transformed_repetition=5,
@@ -192,6 +192,8 @@ class RecordDistance(RecordActivations):
         add_columns=None,
     ):
         affine_rnd_fun = get_affine_rnd_fun(transf_boundaries)
+        af = [[get_affine_rnd_fun({})()] * 2] + [[affine_rnd_fun()] * 2 for _ in range(transformed_repetition - 1)]
+
         norm = [i for i in transform.transforms if isinstance(i, transforms.Normalize)][
             0
         ]
@@ -247,18 +249,18 @@ class RecordDistance(RecordActivations):
                 ):
                     im_0 = Image.open(reference_path).convert("RGB")
                     im_i = Image.open(comp_path).convert("RGB")
-                    af = (
-                        [affine_rnd_fun() for i in [im_0, im_i]]
-                        if not matching_transform
-                        else [affine_rnd_fun()] * 2
-                    )
+                    # af = (
+                    #     [affine_rnd_fun() for i in [im_0, im_i]]
+                    #     if not matching_transform
+                    #     else [affine_rnd_fun()] * 2
+                    # )
                     images = [
                         my_affine(
                             im,
-                            translate=af[idx]["tr"],
-                            angle=af[idx]["rt"],
-                            scale=af[idx]["sc"],
-                            shear=af[idx]["sh"],
+                            translate=af[transform_idx][idx]["tr"],
+                            angle=af[transform_idx][idx]["rt"],
+                            scale=af[transform_idx][idx]["sc"],
+                            shear=af[transform_idx][idx]["sh"],
                             interpolation=InterpolationMode.NEAREST,
                             fill=fill_bk,
                         )
