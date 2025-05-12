@@ -188,7 +188,7 @@ def compute_mean_and_std_from_dataset(
     return stats
 
 
-def fix_dataset(dataset, transf_values, fill_color, name_ds=""):
+def fix_dataset(dataset, transf_values, fill_color, size, name_ds=""):
     dataset.name = name_ds
     dataset.stats = {
         "mean": [0.485, 0.456, 0.406],
@@ -224,6 +224,7 @@ def fix_dataset(dataset, transf_values, fill_color, name_ds=""):
                 fill_color=fill_color,
             ),
             torchvision.transforms.ToTensor(),
+            torchvision.transforms.Resize(size),
             torchvision.transforms.Normalize(
                 mean=dataset.stats["mean"], std=dataset.stats["std"]
             ),
@@ -256,6 +257,7 @@ def get_dataloader(
         transf_values=transf_config["values"],
         fill_color=transf_config["fill_color"],
         name_ds=ds_config["name"],
+        size=transf_config["size"],
     )
 
     return DataLoader(
@@ -349,6 +351,9 @@ class ImageDatasetAnnotations(Dataset):
 
         self.transform = transform
         self.dataframe = self.dataframe.reset_index(drop=True)
+
+    def idx2label(self, idx):
+        return self.dataframe.loc[idx, self.label_cols]
 
     def __len__(self) -> int:
         return len(self.dataframe)
