@@ -194,9 +194,6 @@ def fix_dataset(dataset, transf_values, fill_color, size, name_ds=""):
         "mean": [0.485, 0.456, 0.406],
         "std": [0.229, 0.224, 0.225],
     }  # ImageNet Normalization Values
-    add_resize = False
-    if next(iter(dataset))[0].size[0] != 244:
-        add_resize = True
 
     dataset.transform = torchvision.transforms.Compose(
         [
@@ -230,8 +227,6 @@ def fix_dataset(dataset, transf_values, fill_color, size, name_ds=""):
             ),
         ]
     )
-    if add_resize:
-        dataset.transform.transforms.insert(0, torchvision.transforms.Resize(224))
     return dataset
 
 
@@ -323,6 +318,7 @@ class ImageDatasetAnnotations(Dataset):
         img_path_col: str,
         label_cols: Union[List[str], str],
         filters: Optional[Dict[str, Union[str, int]]] = None,
+        neg_filters: Optional[Dict[str, Union[str, int]]] = None,
         transform=None,
         return_path=False,
     ):
@@ -332,6 +328,9 @@ class ImageDatasetAnnotations(Dataset):
         if filters:
             for key, value in filters.items():
                 self.dataframe = self.dataframe[self.dataframe[key] == value]
+        if neg_filters:
+            for key, value in neg_filters.items():
+                self.dataframe = self.dataframe[self.dataframe[key] != value]
         self.img_path_col = img_path_col
         self.root_path = pathlib.Path(csv_file).parent
         self.label_cols = label_cols
