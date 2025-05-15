@@ -243,6 +243,7 @@ def get_dataloader(
         img_path_col=ds_config["img_path_col_name"],
         label_cols=ds_config["label_cols"],
         filters=ds_config["filters"],
+        neg_filters=ds_config['neg_filters'],
         transform=None,  # transform is added in fix_dataset
         return_path=return_path,
     )
