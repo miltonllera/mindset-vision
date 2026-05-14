@@ -46,6 +46,24 @@ def test_generate_ebbinghaus():
     shutil.rmtree(out)
 
 
+def test_generate_ponzo_random_target_lines(tmp_path):
+    """smoke test: generate ponzo scrambled samples with random targets."""
+    from mindset.generators.visual_illusions.ponzo import generate_all
+
+    out = tmp_path / "ponzo-random-target-lines"
+
+    result = generate_all(
+        num_samples_scrambled=1,
+        num_samples_illusory=1,
+        rnd_target_lines=True,
+        output_folder=str(out),
+    )
+
+    assert Path(result).exists()
+    assert (out / "annotation.csv").exists()
+    assert len(list(out.rglob("*.png"))) == 3
+
+
 def test_cli_entry_point():
     """verify the CLI entry point is callable."""
     from mindset.cli import main

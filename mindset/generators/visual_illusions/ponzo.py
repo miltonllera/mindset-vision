@@ -167,7 +167,7 @@ class DrawPonzo(DrawStimuli):
 
         else:
             red_sp, red_ep = self.get_random_start_end_ponts()
-            blue_st, blue_ep = self.get_random_start_end_ponts()
+            blue_sp, blue_ep = self.get_random_start_end_ponts()
 
         d.line([red_sp, red_ep], fill="red", width=2)
         red_length = np.linalg.norm(np.array(red_ep) - np.array(red_sp))
