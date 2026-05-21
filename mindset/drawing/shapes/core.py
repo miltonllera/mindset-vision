@@ -86,7 +86,8 @@ class ShapeCoreFunctions:
         Cut the shape along a line defined by a reference point and an angle.
 
         Args:
-            reference_point (tuple): tuple of two floats between 0 and 1, indicating the reference point coordinates relative to the bounding box of the image
+            reference_point (tuple): tuple of two floats between 0 and 1, indicating the reference
+                point coordinates relative to the bounding box of the image
             angle_degrees (int): angle in degrees for the line to cut the shape
 
         Returns:
@@ -306,10 +307,14 @@ class ShapeCoreFunctions:
                 np.sin(np.deg2rad(direction_degrees)),
             ]
         )
-        canvas_new = new("RGBA", self.initial_image_size, color=(0, 0, 0, 0))
-        canvas_new.paste(
-            self.canvas, tuple((direction_vector * distance).astype(int)), self.canvas
+        bbox = self.canvas.getbbox()
+        cropped = self.canvas.crop(bbox)
+        new_pos = (
+            int(bbox[0] + direction_vector[0] * distance),
+            int(bbox[1] + direction_vector[1] * distance),
         )
+        canvas_new = new("RGBA", self.initial_image_size, color=(0, 0, 0, 0))
+        canvas_new.paste(cropped, new_pos, cropped)
         self.canvas = canvas_new
         self.draw = Draw(self.canvas)
         self.update_self_position()
@@ -338,20 +343,18 @@ class ShapeCoreFunctions:
 
     def get_distance_from(self, another_shape):
         """get the distance between the center of the bbox of shape and another shape"""
-        bbox_self = self.canvas.getbbox()
-        bbox_other = another_shape.canvas.getbbox()
-
-        center_bbox_self = np.array(
-            [(bbox_self[0] + bbox_self[2]) / 2, (bbox_self[1] + bbox_self[3]) / 2]
-        )
-        center_bbox_other = np.array(
-            [(bbox_other[0] + bbox_other[2]) / 2, (bbox_other[1] + bbox_other[3]) / 2]
-        )
+        center_bbox_self = self.get_bbox_center()
+        center_bbox_other = another_shape.get_bbox_center()
         centering_vector = center_bbox_other - center_bbox_self
-
         return np.linalg.norm(centering_vector)
 
     # --------------------------------------------------------------------------
+    def get_bbox_center(self):
+        bbox_self = self.canvas.getbbox()
+        return np.array(
+            [(bbox_self[0] + bbox_self[2]) / 2, (bbox_self[1] + bbox_self[3]) / 2]  #type: ignore
+        )
+
     def is_touching(self, another_shape):
         """
         check if the shape overlaps with another shape
@@ -403,10 +406,7 @@ class ShapeCoreFunctions:
         2. get the center of the bounding box
         3. normalize the center of the bounding box between 0 and 1 by dividing by the initial image width
         """
-        bbox = self.canvas.getbbox()
-        center = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2])
+        center = self.get_bbox_center()
         self.position = center / self.initial_image_size
         return self
 
-
-##

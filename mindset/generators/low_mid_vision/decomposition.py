@@ -19,10 +19,9 @@ from mindset.generators._base import GeneratorConfig, generator, register
 class DrawDecomposition(DrawStimuli):
     """draw decomposition stimuli with paired shapes."""
 
-    def __init__(self, shape_size, shape_color, moving_distance, *args, **kwargs):
+    def __init__(self, shape_size, shape_color, *args, **kwargs):
         """initialise with shape geometry params."""
         self.shape_size = shape_size
-        self.moving_distance = moving_distance
         self.shape_color = shape_color
         super().__init__(*args, **kwargs)
 
@@ -32,8 +31,9 @@ class DrawDecomposition(DrawStimuli):
         shape_2_name,
         split_type,
         cut_rotation,
+        moving_distance,
+        shape_grayscale,
         image_rotation=0,
-        image_position=(0.5, 0.5),
     ):
         """render a single decomposition image."""
         parent = ParentStimuli(
@@ -52,7 +52,14 @@ class DrawDecomposition(DrawStimuli):
 
         shape_1.rotate(30)
         shape_2.rotate(30)
-        shape_2.move_next_to(shape_1, "LEFT")
+        shape_2.move_next_to(shape_1, "LEFT")  # type: ignore
+
+        # Re-center shapes so we avoid clipping further down the generator pipeline.
+        center_bbox_shape1 = shape_1.get_bbox_center() / np.asarray(shape_1.canvas.size)
+        center_bbox_shape2 = shape_2.get_bbox_center() / np.asarray(shape_2.canvas.size)
+        displacement = 0.5 - (center_bbox_shape2 + (center_bbox_shape1 - center_bbox_shape2) / 2)
+        shape_1.move_to(center_bbox_shape1 + displacement)  # type: ignore
+        shape_2.move_to(center_bbox_shape2 + displacement)  # type: ignore
 
         if split_type == "no_split":
             shape_1.register()
@@ -66,18 +73,19 @@ class DrawDecomposition(DrawStimuli):
             )
             further_piece = [piece_1, piece_2][index]
             closer_piece = [piece_1, piece_2][1 - index]
-            further_piece.move_apart_from(closer_piece, self.moving_distance)
+            further_piece.move_apart_from(closer_piece, moving_distance)
             shape_1.register()
             piece_1.register()
             piece_2.register()
         else:
-            shape_2.move_apart_from(shape_1, self.moving_distance)
+            shape_2.move_apart_from(shape_1, moving_distance)
             shape_1.register()
             shape_2.register()
 
         parent.binary_filter()
-        parent.convert_color_to_color((255, 255, 255), self.shape_color)
-        parent.move_to(image_position).rotate(image_rotation)
+        shape_color = (np.asarray(self.shape_color) * shape_grayscale).astype(int)
+        parent.convert_color_to_color((255, 255, 255), shape_color)
+        parent.rotate(image_rotation)
         self.create_canvas()
         parent.add_background(self.background)
         parent.shrink() if self.antialiasing else None
@@ -88,12 +96,16 @@ class DrawDecomposition(DrawStimuli):
 class DecompositionConfig(GeneratorConfig):
     """config for decomposition dataset."""
 
-    moving_distance: int = field(
-        default=60,
-        metadata={"min": 1, "max": 200, "step": 1, "label": "moving distance"},
+    moving_distance: tuple[int, int, int] = field(
+        default=(5, 50, 10),
+        metadata={'min': 5, 'max': 50, 'num_values': 10, 'label': "moving distance"},
     )
     shape_color: list = field(
-        default_factory=lambda: [255, 255, 255], metadata={"label": "shape color (RGB)"}
+        default_factory=lambda: [255, 255, 255], metadata={'label': "shape color (RGB)"}
+    )
+    shape_grayscale: tuple[float, float, int] = field(
+        default=(1.0, 1.0, 1),
+        metadata={'min': 0.5, 'max': 1.0, 'num_values': 1}
     )
     number_unfamiliar_shapes: int = field(
         default=5,
@@ -136,7 +148,6 @@ def generate_all(config: DecompositionConfig):
     ds = DrawDecomposition(
         0.05,
         config.shape_color,
-        config.moving_distance,
         background=config.background_color,
         canvas_size=config.canvas_size,
         antialiasing=config.antialiasing,
@@ -150,42 +161,59 @@ def generate_all(config: DecompositionConfig):
         writer = csv.writer(annfile)
         writer.writerow(
             [
-                "Path",
-                "BackgroundColor",
+                "SampleID",
                 "ShapeType",
-                "SplitType",
+                "NoSplitPath",
+                "NaturalPath",
+                "UnnaturalPath",
                 "LeftShape",
                 "RightShape",
                 "CutRotation",
-                "PairShapeId",
-                "IterNum",
+                "MovingDistance",
+                "ShapeGreyscale",
+                "BackgroundColor",
             ]
         )
 
-        for name_comb, combs in tqdm(shapes_types.items()):
-            for idx, c in enumerate(tqdm(combs, leave=False)):
+        moving_distances = np.linspace(*config.moving_distance, dtype=int)
+        alphas = np.linspace(*config.shape_grayscale, dtype=float)
+        conditions = list(product(shapes_types.items(), moving_distances, alphas))
+
+        sample_id = 0
+        for (name_comb, combs), moving_distance, alpha in tqdm(conditions, total=len(conditions)):
+            for c in tqdm(combs, leave=False):
                 cut_rotation = random.uniform(0, 360)
+                paths = {}
                 for split_type in split_types:
                     img = ds.generate_canvas(
                         c["shape_1_name"],
                         c["shape_2_name"],
                         split_type=split_type,
                         cut_rotation=cut_rotation,
+                        moving_distance=moving_distance,
+                        shape_grayscale=alpha
                     )
                     unique_hex = uuid.uuid4().hex[:8]
-                    path = Path(name_comb) / split_type / f"{unique_hex}.png"
+                    path = Path(name_comb) / split_type / \
+                        f"{c['shape_1_name']}_{c['shape_2_name']}_{unique_hex}.png"
                     img.save(output_folder / path)
-                    writer.writerow(
-                        [
-                            path,
-                            ds.background,
-                            name_comb,
-                            split_type,
-                            c["shape_1_name"],
-                            c["shape_2_name"],
-                            cut_rotation,
-                            idx,
-                        ]
-                    )
+                    paths[split_type] = path
+
+                writer.writerow(
+                    [
+                        sample_id,
+                        name_comb,
+                        paths["no_split"],
+                        paths["natural"],
+                        paths["unnatural"],
+                        c["shape_1_name"],
+                        c["shape_2_name"],
+                        cut_rotation,
+                        moving_distance,
+                        alpha,
+                        ds.background,
+                    ]
+                )
+                sample_id += 1
 
     return str(output_folder)
