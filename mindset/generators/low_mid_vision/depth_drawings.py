@@ -248,7 +248,7 @@ class DepthDrawingsConfig(GeneratorConfig):
         metadata={"min": 1, "max": 20, "step": 1, "label": "stroke width (px)"},
     )
     output_folder: str = field(
-        default="data/low_mid_level_vision/depth_drawings",
+        default="data/low_mid_vision/depth_drawings",
         metadata={"label": "output folder"},
     )
 
@@ -282,11 +282,10 @@ def generate_all(config: DepthDrawingsConfig):
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
         writer = csv.writer(annfile)
         writer.writerow([
-            "Path", "Class", "BackgroundColor", "Id", "Shape",
-            "Angle", "DepthFactor", "BackScale", "IterNum"
+            "SampleID", "Shape", "Angle", "DepthFactor", "BackScale",
+            "BasisPath", "Variation1Path", "Variation2Path", "BackgroundColor"
         ])
 
-        iter_num = 0
         for n in tqdm(range(config.num_samples)):
             # Randomly select shape type (1.0 = Cube, 0.6 = Truncated Pyramid)
             shape_type = random.choice(["cube", "truncated_pyramid"])
@@ -302,28 +301,30 @@ def generate_all(config: DepthDrawingsConfig):
 
             stim_id = f"stim_{shape_type}_{n:05d}"
 
-            for cond in ["basis", "variation1", "variation2"]:
-                img = ds.draw_stimulus(
-                    condition=cond,
-                    angle_deg=angle,
-                    depth_factor=depth_factor,
-                    back_scale=back_scale,
-                )
-                path = Path(cond) / f"{stim_id}.png"
-                img.save(output_folder / path)
+            # Generate and save all 3 conditions
+            basis_img = ds.draw_stimulus("basis", angle, depth_factor, back_scale)
+            basis_path = Path("basis") / f"{stim_id}.png"
+            basis_img.save(output_folder / basis_path)
 
-                writer.writerow([
-                    path,
-                    cond,
-                    ds.background,
-                    stim_id,
-                    shape_type,
-                    round(angle, 2),
-                    round(depth_factor, 2),
-                    back_scale,
-                    iter_num
-                ])
-                iter_num += 1
+            v1_img = ds.draw_stimulus("variation1", angle, depth_factor, back_scale)
+            v1_path = Path("variation1") / f"{stim_id}.png"
+            v1_img.save(output_folder / v1_path)
+
+            v2_img = ds.draw_stimulus("variation2", angle, depth_factor, back_scale)
+            v2_path = Path("variation2") / f"{stim_id}.png"
+            v2_img.save(output_folder / v2_path)
+
+            writer.writerow([
+                n,
+                shape_type,
+                round(angle, 2),
+                round(depth_factor, 2),
+                back_scale,
+                str(basis_path),
+                str(v1_path),
+                str(v2_path),
+                ds.background
+            ])
 
     return str(output_folder)
 
