@@ -12,6 +12,8 @@ init
 
 
 assets/viewpoint_invariance
+mindset/assets/depth_drawings/pngs/*
+mindset/assets/depth_drawings/svg/*
 # specific directories
 **/__pycache__/
 **/.neptune/
