@@ -175,16 +175,6 @@ class DrawLinedrawings(DrawStimuli):
             dy_sign = -1  # vertical goes up
 
         if condition == "basis":
-            # Draw front square outline
-            draw.line([V0, V1, V2, V3, V0], fill=fill, width=w_s)
-            # Draw visible oblique edges
-            for p1, p2 in oblique_edges:
-                draw.line([p1, p2], fill=fill, width=w_s)
-            # Draw visible back edges
-            for p1, p2 in back_edges:
-                draw.line([p1, p2], fill=fill, width=w_s)
-
-        elif condition == "variation1":
             # Draw the 3 lines of the isolated Y-junction
             # Line 1: Horizontal
             p_horiz = (V_jc[0] + dx_sign * s_s, V_jc[1])
@@ -195,7 +185,7 @@ class DrawLinedrawings(DrawStimuli):
             # Line 3: Oblique (connecting front to back vertex)
             draw.line([V_jc, V_jc_p], fill=fill, width=w_s)
 
-        elif condition == "variation2":
+        elif condition == "rectangle-hull":
             # Draw the outer bounding box (centered on canvas)
             box_coords = [
                 (ox, oy),
@@ -224,6 +214,16 @@ class DrawLinedrawings(DrawStimuli):
             ix_local, iy_local = find_ray_box_intersection(cx_local, cy_local, diag_angle_rad, W_box, H_box)
             p_diag_ext = (ox + ix_local, oy + iy_local)
             draw.line([V_jc, p_diag_ext], fill=fill, width=w_s)
+
+        elif condition == "3dshape":
+            # Draw front square outline
+            draw.line([V0, V1, V2, V3, V0], fill=fill, width=w_s)
+            # Draw visible oblique edges
+            for p1, p2 in oblique_edges:
+                draw.line([p1, p2], fill=fill, width=w_s)
+            # Draw visible back edges
+            for p1, p2 in back_edges:
+                draw.line([p1, p2], fill=fill, width=w_s)
 
         # Downsample using Lanczos interpolation to antialias
         if self.antialiasing:
@@ -259,7 +259,7 @@ def generate_all(config: DepthDrawingsConfig):
     """generate depth drawings dataset."""
     output_folder = Path(config.output_folder)
 
-    for cond in ["basis", "variation1", "variation2"]:
+    for cond in ["basis", "rectangle-hull", "3dshape"]:
         (output_folder / cond).mkdir(exist_ok=True, parents=True)
 
     ds = DrawLinedrawings(
@@ -283,7 +283,7 @@ def generate_all(config: DepthDrawingsConfig):
         writer = csv.writer(annfile)
         writer.writerow([
             "SampleID", "Shape", "Angle", "DepthFactor", "BackScale",
-            "BasisPath", "Variation1Path", "Variation2Path", "BackgroundColor"
+            "BasisPath", "RectangleHullPath", "3DShapePath", "BackgroundColor"
         ])
 
         for n in tqdm(range(config.num_samples)):
@@ -299,19 +299,19 @@ def generate_all(config: DepthDrawingsConfig):
             # Sample random depth factor
             depth_factor = random.uniform(0.4, 1.0)
 
-            stim_id = f"stim_{shape_type}_{n:05d}"
+            stim_id = f"{shape_type}_{n:05d}"
 
             # Generate and save all 3 conditions
             basis_img = ds.draw_stimulus("basis", angle, depth_factor, back_scale)
             basis_path = Path("basis") / f"{stim_id}.png"
             basis_img.save(output_folder / basis_path)
 
-            v1_img = ds.draw_stimulus("variation1", angle, depth_factor, back_scale)
-            v1_path = Path("variation1") / f"{stim_id}.png"
+            v1_img = ds.draw_stimulus("rectangle-hull", angle, depth_factor, back_scale)
+            v1_path = Path("rectangle-hull") / f"{stim_id}.png"
             v1_img.save(output_folder / v1_path)
 
-            v2_img = ds.draw_stimulus("variation2", angle, depth_factor, back_scale)
-            v2_path = Path("variation2") / f"{stim_id}.png"
+            v2_img = ds.draw_stimulus("3dshape", angle, depth_factor, back_scale)
+            v2_path = Path("3dshape") / f"{stim_id}.png"
             v2_img.save(output_folder / v2_path)
 
             writer.writerow([
