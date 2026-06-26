@@ -259,7 +259,11 @@ def generate_all(config: DepthDrawingsConfig):
     """generate depth drawings dataset."""
     output_folder = Path(config.output_folder)
 
-    for cond in ["basis", "rectangle-hull", "3dshape"]:
+    for cond in [
+        "basis", "basis_rotated",
+        "rectangle-hull", "rectangle-hull_rotated",
+        "3dshape", "3dshape_rotated",
+    ]:
         (output_folder / cond).mkdir(exist_ok=True, parents=True)
 
     ds = DrawLinedrawings(
@@ -283,7 +287,8 @@ def generate_all(config: DepthDrawingsConfig):
         writer = csv.writer(annfile)
         writer.writerow([
             "SampleID", "Shape", "Angle", "DepthFactor", "BackScale",
-            "BasisPath", "RectangleHullPath", "3DShapePath", "BackgroundColor"
+            "BasisPath", "BasisRotatedPath", "RectangleHullPath", "RectangleHullRotatedPath",
+            "3DShapePath", "3DShapeRotatedPath", "BackgroundColor"
         ])
 
         for n in tqdm(range(config.num_samples)):
@@ -301,19 +306,37 @@ def generate_all(config: DepthDrawingsConfig):
 
             stim_id = f"{shape_type}_{n:05d}"
 
-            # Generate and save all 3 conditions
+            # Generate basis feature variants
             basis_img = ds.draw_stimulus("basis", angle, depth_factor, back_scale)
+            basis_rotated_img = basis_img.rotate(180.0)
+
             basis_path = Path("basis") / f"{stim_id}.png"
             basis_img.save(output_folder / basis_path)
 
+            basis_rotated_path = Path("basis_rotated") / f"{stim_id}.png"
+            basis_rotated_img.save(output_folder / basis_rotated_path)
+
+            # Generate rectangle hull variants
             v1_img = ds.draw_stimulus("rectangle-hull", angle, depth_factor, back_scale)
+            v1_rotated_img = v1_img.rotate(180.0)
+
             v1_path = Path("rectangle-hull") / f"{stim_id}.png"
             v1_img.save(output_folder / v1_path)
 
+            v1_rotated_path = Path("rectangle-hull_rotated") / f"{stim_id}.png"
+            v1_rotated_img.save(output_folder / v1_rotated_path)
+
+            # Generate 3D shape variants
             v2_img = ds.draw_stimulus("3dshape", angle, depth_factor, back_scale)
+            v2_rotated_img = v2_img.rotate(180.0)
+
             v2_path = Path("3dshape") / f"{stim_id}.png"
             v2_img.save(output_folder / v2_path)
 
+            v2_rotated_path = Path("3dshape_rotated") / f"{stim_id}.png"
+            v2_rotated_img.save(output_folder / v2_rotated_path)
+
+            # Write annotation row
             writer.writerow([
                 n,
                 shape_type,
@@ -321,8 +344,11 @@ def generate_all(config: DepthDrawingsConfig):
                 round(depth_factor, 2),
                 back_scale,
                 str(basis_path),
+                str(basis_rotated_path),
                 str(v1_path),
+                str(v1_rotated_path),
                 str(v2_path),
+                str(v2_rotated_path),
                 ds.background
             ])
 
