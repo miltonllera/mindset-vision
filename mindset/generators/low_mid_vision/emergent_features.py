@@ -336,8 +336,12 @@ class EmergentFeaturesConfig(GeneratorConfig):
         default=1000,
         metadata={"min": 1, "max": 50000, "step": 10, "label": "number of samples"},
     )
+    variant: str = field(
+        default="all",
+        metadata={'values': ["orientation", "linearity", "proximity"]},
+    )
     output_folder: str = field(
-        default="data/low_mid_level_vision/emergent_features",
+        default="data/low_mid_vision/emergent_features",
         metadata={"label": "output folder"},
     )
 
@@ -347,11 +351,17 @@ class EmergentFeaturesConfig(GeneratorConfig):
 def generate_all(config: EmergentFeaturesConfig):
     """generate emergent features dataset."""
     output_folder = Path(config.output_folder)
-    all_types = ["single", "proximity", "orientation", "linearity"]
 
-    for t in all_types:
-        for pair in ["a", "b"]:
-            (output_folder / t / pair).mkdir(exist_ok=True, parents=True)
+    if config.variant == "all":
+        variants = ["proximity", "orientation", "linearity"]
+    else:
+        variants = [config.variant]
+
+    # Create nested subfolders for each variant
+    for v in variants:
+        for cond in ["single", v]:
+            for pair in ["a", "b"]:
+                (output_folder / v / cond / pair).mkdir(exist_ok=True, parents=True)
 
     ds = DrawEmergentFeaturesdots(
         background=config.background_color,
@@ -360,15 +370,54 @@ def generate_all(config: EmergentFeaturesConfig):
         width=10,
     )
 
-    with open(output_folder / "annotation.csv", "w", newline="") as annfile:
-        writer = csv.writer(annfile)
-        writer.writerow(["Path", "Type", "BackgroundColor", "PairA/B", "SampleId"])
+    # Open variant-specific annotation files
+    ann_files = {}
+    writers = {}
+    for v in variants:
+        f = open(output_folder / v / "annotation.csv", "w", newline="")
+        ann_files[v] = f
+        writer = csv.writer(f)
+        writer.writerow([
+            "SampleID",
+            "BaseAPath",
+            "BaseBPath",
+            "EmergentPath",
+            "NonEmergentPath",
+            "BackgroundColor"
+        ])
+        writers[v] = writer
+
+    try:
         for i in tqdm(range(config.num_samples)):
             all_sets = ds.get_all_sets()[0]
-            for t in tqdm(all_types, leave=False):
-                for ip, pair in enumerate(["a", "b"]):
-                    path = Path(t) / pair / f"{i}.png"
-                    all_sets[t][ip].save(output_folder / path)
-                    writer.writerow([path, t, ds.background, pair, i])
+            # all_sets contains: 'single', 'proximity', 'orientation', 'linearity'
+
+            for v in variants:
+                # Define relative paths for the annotation file
+                base_a_path = Path("single") / "a" / f"{i}.png"
+                base_b_path = Path("single") / "b" / f"{i}.png"
+                var_a_path = Path(v) / "a" / f"{i}.png"
+                var_b_path = Path(v) / "b" / f"{i}.png"
+
+                # Save base images (single) inside each variant's folder
+                all_sets["single"][0].save(output_folder / v / base_a_path)
+                all_sets["single"][1].save(output_folder / v / base_b_path)
+
+                # Save variant images
+                all_sets[v][0].save(output_folder / v / var_a_path)
+                all_sets[v][1].save(output_folder / v / var_b_path)
+
+                # Write comparison row
+                writers[v].writerow([
+                    i,
+                    base_a_path.as_posix(),
+                    base_b_path.as_posix(),
+                    var_a_path.as_posix(),
+                    var_b_path.as_posix(),
+                    ds.background
+                ])
+    finally:
+        for f in ann_files.values():
+            f.close()
 
     return str(output_folder)
