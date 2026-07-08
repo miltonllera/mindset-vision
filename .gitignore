@@ -11,7 +11,8 @@ experiments/*
 init
 
 
-assets/viewpoint_invariance
+*/assets/viewpoint_invariance
+*/assets/depth_drawings/pngs/
 # specific directories
 **/__pycache__/
 **/.neptune/

@@ -9,6 +9,7 @@ import subprocess
 import cv2
 import numpy as np
 import PIL
+import PIL.Image
 import sty
 import tqdm
 from PIL import ImageFilter
