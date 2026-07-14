@@ -3,6 +3,7 @@
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
+import uuid
 
 import cv2
 import PIL.Image as Image
@@ -46,7 +47,7 @@ class NapVsMp2dConfig(GeneratorConfig):
         default="mindset/assets/nap_vs_mp_2d/pngs", metadata={"label": "input folder"}
     )
     output_folder: str = field(
-        default="data/low_mid_level_vision/NAP_vs_MP_2D_lines",
+        default="data/low_mid_vision/nap_vs_mp_2d",
         metadata={"label": "output folder"},
     )
     antialiasing: bool = field(default=False, metadata={"label": "antialiasing"})
@@ -59,9 +60,12 @@ def generate_all(config: NapVsMp2dConfig):
     output_folder = Path(config.output_folder)
     input_folder = Path(config.input_folder)
 
-    all_categories = [i.stem for i in input_folder.glob("*")]
-    for cat in all_categories:
-        (output_folder / cat).mkdir(exist_ok=True, parents=True)
+    ref_folder = input_folder / "reference"
+    mp_folder = input_folder / "MP"
+    nap_folder = input_folder / "NAP"
+
+    for cond in ["reference", "MP", "NAP"]:
+        (output_folder / cond).mkdir(exist_ok=True, parents=True)
 
     ds = DrawLinedrawings(
         background=config.background_color,
@@ -70,16 +74,63 @@ def generate_all(config: NapVsMp2dConfig):
         obj_longest_side=config.object_longest_side,
     )
 
-    image_files = list(input_folder.rglob("*.jpg")) + list(input_folder.rglob("*.png"))
+    ref_files = sorted(
+        [f for f in ref_folder.iterdir() if f.suffix.lower() in [".png", ".jpg", ".jpeg"]],
+        key=lambda x: x.name,
+    )
+
+    def save_image(img, condition, sample_id, sample_name):
+        unique_hex = uuid.uuid4().hex[:8]
+        path = Path(condition) / f"{sample_id}_{sample_name}_{unique_hex}.png"
+        img.save(output_folder / path)
+        return path
 
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
         writer = csv.writer(annfile)
-        writer.writerow(["Path", "Class", "BackgroundColor", "IterNum"])
-        for n, img_path in enumerate(tqdm(image_files)):
-            class_name = img_path.parent.stem
-            img = ds.get_linedrawings(img_path)
-            path = Path(class_name) / f"{n}.png"
-            img.save(output_folder / path)
-            writer.writerow([path, class_name, ds.background, n])
+        writer.writerow(
+            [
+                "SampleID",
+                "SampleName",
+                "ReferencePath",
+                "MPPath",
+                "NAPPath",
+                "BackgroundColor",
+            ]
+        )
+
+        for sample_id, ref_img_path in enumerate(tqdm(ref_files)):
+            sample_name = ref_img_path.stem
+            filename = ref_img_path.name
+
+            mp_img_path = mp_folder / filename
+            nap_img_path = nap_folder / filename
+
+            if not mp_img_path.exists():
+                raise FileNotFoundError(f"MP file not found for {filename}")
+            if not nap_img_path.exists():
+                raise FileNotFoundError(f"NAP file not found for {filename}")
+
+            # Generate reference image
+            ref_img = ds.get_linedrawings(ref_img_path)
+            ref_path = save_image(ref_img, "reference", sample_id, sample_name)
+
+            # Generate MP image
+            mp_img = ds.get_linedrawings(mp_img_path)
+            mp_path = save_image(mp_img, "MP", sample_id, sample_name)
+
+            # Generate NAP image
+            nap_img = ds.get_linedrawings(nap_img_path)
+            nap_path = save_image(nap_img, "NAP", sample_id, sample_name)
+
+            writer.writerow(
+                [
+                    sample_id,
+                    sample_name,
+                    ref_path,
+                    mp_path,
+                    nap_path,
+                    ds.background,
+                ]
+            )
 
     return str(output_folder)
