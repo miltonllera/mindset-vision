@@ -94,7 +94,7 @@ class NapVsMp3dConfig(GeneratorConfig):
     max_aspect_ratio: float = field(default=1.5, metadata={"label": "maximum aspect ratio value"})
 
     output_folder: str = field(
-        default="data/low_mid_level_vision/NAP_vs_MP_3D_geons",
+        default="data/low_mid_vision/nap_vs_mp_3d_geons",
         metadata={"label": "output folder"},
     )
 
@@ -339,6 +339,7 @@ def generate_all(config: NapVsMp3dConfig):
                 if dim == "axis_curvature":
                     # Sample metric change (MP), then set reference to half of it
                     mp_val = np.random.uniform(config.min_curvature, config.max_curvature)
+                    mp_val = np.random.choice([1., -1.]) * mp_val  # flip the curvature direction
                     ref_val = 0.5 * mp_val
                     ref_params = (base_shape, ref_val, 0.0, 0.0, 1.0)
                     mp_params  = (base_shape, mp_val, 0.0, 0.0, 1.0)
@@ -353,6 +354,7 @@ def generate_all(config: NapVsMp3dConfig):
                 elif dim == "side_curvature":
                     # Sample metric change (MP), then set reference to half of it
                     mp_val = np.random.uniform(config.min_side_curvature, config.max_side_curvature)
+                    mp_val = np.random.choice([1., -1.]) * mp_val  # flip between convex and conve
                     ref_val = 0.5 * mp_val
                     ref_params = (base_shape, 0.0, 0.0, ref_val, 1.0)
                     mp_params  = (base_shape, 0.0, 0.0, mp_val, 1.0)
@@ -394,10 +396,10 @@ def generate_all(config: NapVsMp3dConfig):
                 ref_path = save_image(ref_img, "reference", sample_id, sample_name)
 
                 mp_img = render_condition(mp_params)
-                mp_path = save_image(mp_img, "MP", sample_id, sample_name)
+                mp_path = save_image(mp_img, "mp", sample_id, sample_name)
 
                 nap_img = render_condition(nap_params)
-                nap_path = save_image(nap_img, "NAP", sample_id, sample_name)
+                nap_path = save_image(nap_img, "nap", sample_id, sample_name)
 
                 writer.writerow(
                     [
