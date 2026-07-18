@@ -354,7 +354,7 @@ def generate_all(config: NapVsMp3dConfig):
                 elif dim == "side_curvature":
                     # Sample metric change (MP), then set reference to half of it
                     mp_val = np.random.uniform(config.min_side_curvature, config.max_side_curvature)
-                    mp_val = np.random.choice([1., -1.]) * mp_val  # flip between convex and conve
+                    mp_val = np.random.choice([1., -1.]) * mp_val  # flip between convex and concave
                     ref_val = 0.5 * mp_val
                     ref_params = (base_shape, 0.0, 0.0, ref_val, 1.0)
                     mp_params  = (base_shape, 0.0, 0.0, mp_val, 1.0)
