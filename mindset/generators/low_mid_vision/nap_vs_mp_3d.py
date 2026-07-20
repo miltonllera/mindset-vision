@@ -1,6 +1,8 @@
 """nap vs mp 3d geons dataset generator using SDFs and PyRender."""
 
+import os
 import csv
+from sys import exception
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -269,10 +271,30 @@ def render_mesh(mesh, canvas_size, bg_color, shape_color, eye, target, up):
 @register("nap_vs_mp_3d", "low_mid_vision")
 @generator(NapVsMp3dConfig)
 def generate_all(config: NapVsMp3dConfig):
+
+    # Check if one of the opengl platforms is supported
+    is_render_configured = False
+    try:
+        pyrender.OffscreenRenderer(20, 20)
+        is_render_configured = True
+    except:
+        for platform in ['osmesa', 'egl']:
+            try:
+                os.environ['PYOPENGL_PLATFORM'] = platform
+                pyrender.OffscreenRenderer(20, 20)
+                is_render_configured = True
+            except:
+                pass
+    if not is_render_configured:
+        raise AttributeError(
+            'No supported OpenGL found. See: '
+            'https://pyrender.readthedocs.io/en/latest/examples/offscreen.html'
+        )
+
     """generate nap vs mp 3d geons dataset."""
     output_folder = Path(config.output_folder)
 
-    for cond in ["reference", "mp", "mp"]:
+    for cond in ["reference", "mp", "nap"]:
         (output_folder / cond).mkdir(exist_ok=True, parents=True)
 
     dimensions = [d.strip() for d in config.dimensions.split(",")]
