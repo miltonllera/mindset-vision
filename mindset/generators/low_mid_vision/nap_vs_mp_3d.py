@@ -272,7 +272,7 @@ def generate_all(config: NapVsMp3dConfig):
     """generate nap vs mp 3d geons dataset."""
     output_folder = Path(config.output_folder)
 
-    for cond in ["reference", "MP", "NAP"]:
+    for cond in ["reference", "mp", "mp"]:
         (output_folder / cond).mkdir(exist_ok=True, parents=True)
 
     dimensions = [d.strip() for d in config.dimensions.split(",")]
