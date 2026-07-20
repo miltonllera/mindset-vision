@@ -48,7 +48,7 @@ class NapVsMp3dConfig(GeneratorConfig):
 
     # Shape dimensions to manipulate (represented as a comma-separated string for CLI parsing)
     dimensions: str = field(
-        default="axis_curvature,taper,side_curvature,cross_section",
+        default="axis_curvature,taper,side_curvature,aspect_ratio",
         metadata={"label": "comma-separated list of dimensions to manipulate"}
     )
 
@@ -91,9 +91,9 @@ class NapVsMp3dConfig(GeneratorConfig):
     )
 
     min_aspect_ratio: float = field(
-        default=1.25, metadata={"label": "minimum aspect ratio value"}
+        default=1.5, metadata={"label": "minimum aspect ratio value"}
     )
-    max_aspect_ratio: float = field(default=1.5, metadata={"label": "maximum aspect ratio value"})
+    max_aspect_ratio: float = field(default=1.75, metadata={"label": "maximum aspect ratio value"})
 
     output_folder: str = field(
         default="data/low_mid_vision/nap_vs_mp_3d_geons",
@@ -145,7 +145,7 @@ def sdf_shape(p, shape_type, half_extents, curvature, taper, side_curvature, asp
 
     x = p_unbent[..., 0]
     y = p_unbent[..., 1]
-    z = p_unbent[..., 2]
+    z = p_unbent[..., 2] / (aspect_ratio / 2)
 
     L_half = half_extents[2]
     u = z / L_half
@@ -155,7 +155,7 @@ def sdf_shape(p, shape_type, half_extents, curvature, taper, side_curvature, asp
     S = np.maximum(S, 0.01)
 
     x_scaled = x / S
-    y_scaled = (y / S) / aspect_ratio
+    y_scaled = y / S
 
     p_scaled = np.stack([x_scaled, y_scaled, z], axis=-1)
 
@@ -312,6 +312,10 @@ def generate_all(config: NapVsMp3dConfig):
                 "SampleID",
                 "SampleName",
                 "Dimension",
+                "RefVal",
+                "MPVal",
+                "NAPVal",
+                "Shape",
                 "ReferencePath",
                 "MPPath",
                 "NAPPath",
@@ -363,31 +367,35 @@ def generate_all(config: NapVsMp3dConfig):
                     mp_val = np.random.uniform(config.min_curvature, config.max_curvature)
                     mp_val = np.random.choice([1., -1.]) * mp_val  # flip the curvature direction
                     ref_val = 0.5 * mp_val
-                    ref_params = (base_shape, ref_val, 0.0, 0.0, 1.0)
-                    mp_params  = (base_shape, mp_val, 0.0, 0.0, 1.0)
-                    nap_params = (base_shape, 0.0, 0.0, 0.0, 1.0)
+                    nap_val = 0.0
+                    ref_params = (base_shape, ref_val, 0.0, 0.0, 1.5)
+                    mp_params  = (base_shape, mp_val, 0.0, 0.0, 1.5)
+                    nap_params = (base_shape, nap_val, 0.0, 0.0, 1.5)
                 elif dim == "taper":
                     # Sample metric change (MP), then set reference to half of it
                     mp_val = np.random.uniform(config.min_taper, config.max_taper)
                     ref_val = 0.5 * mp_val
-                    ref_params = (base_shape, 0.0, ref_val, 0.0, 1.0)
-                    mp_params  = (base_shape, 0.0, mp_val, 0.0, 1.0)
-                    nap_params = (base_shape, 0.0, 0.0, 0.0, 1.0)
+                    nap_val = 0.0
+                    ref_params = (base_shape, 0.0, ref_val, 0.0, 1.5)
+                    mp_params  = (base_shape, 0.0, mp_val, 0.0, 1.5)
+                    nap_params = (base_shape, 0.0, nap_val, 0.0, 1.5)
                 elif dim == "side_curvature":
                     # Sample metric change (MP), then set reference to half of it
                     mp_val = np.random.uniform(config.min_side_curvature, config.max_side_curvature)
                     mp_val = np.random.choice([1., -1.]) * mp_val  # flip between convex and concave
                     ref_val = 0.5 * mp_val
-                    ref_params = (base_shape, 0.0, 0.0, ref_val, 1.0)
-                    mp_params  = (base_shape, 0.0, 0.0, mp_val, 1.0)
-                    nap_params = (base_shape, 0.0, 0.0, 0.0, 1.0)
-                elif dim == "cross_section":
+                    nap_val = 0.0
+                    ref_params = (base_shape, 0.0, 0.0, ref_val, 1.5)
+                    mp_params  = (base_shape, 0.0, 0.0, mp_val, 1.5)
+                    nap_params = (base_shape, 0.0, 0.0, nap_val, 1.5)
+                elif dim == "aspect_ratio":
                     # Sample metric aspect ratio (MP), then set reference to halfway between 1.0 and MP
                     mp_val = np.random.uniform(config.min_aspect_ratio, config.max_aspect_ratio)
                     ref_val = 1.0 + 0.5 * (mp_val - 1.0)
-                    ref_params = ("cube", 0.0, 0.0, 0.0, ref_val)
-                    mp_params  = ("cube", 0.0, 0.0, 0.0, mp_val)
-                    nap_params = ("cylinder", 0.0, 0.0, 0.0, 1.0)
+                    nap_val = 1.0
+                    ref_params = (base_shape, 0.0, 0.0, 0.0, ref_val)
+                    mp_params  = (base_shape, 0.0, 0.0, 0.0, mp_val)
+                    nap_params = (base_shape, 0.0, 0.0, 0.0, nap_val)
                 else:
                     # Default fallback
                     ref_params = (base_shape, 0.0, 0.0, 0.0, 1.0)
@@ -428,6 +436,10 @@ def generate_all(config: NapVsMp3dConfig):
                         sample_id,
                         sample_name,
                         dim,
+                        ref_val,
+                        mp_val,
+                        nap_val,
+                        base_shape,
                         ref_path,
                         mp_path,
                         nap_path,
