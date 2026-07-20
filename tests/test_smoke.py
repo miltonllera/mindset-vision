@@ -68,3 +68,21 @@ def test_cli_entry_point():
     """verify the CLI entry point is callable."""
     from mindset.cli import main
     assert callable(main)
+
+
+def test_generate_relational_vs_coordinate(tmp_path):
+    """smoke test: generate a small relational vs coordinate dataset."""
+    from mindset.generators.low_mid_vision.relational_vs_coordinate import generate_all
+
+    out = tmp_path / "relational-vs-coordinate-smoke"
+
+    result = generate_all(
+        num_samples=2,
+        output_folder=str(out),
+    )
+
+    assert Path(result).exists()
+    assert (out / "annotation.csv").exists()
+    # 2 samples * 3 conditions (basis, coord change, relation change) = 6 images
+    assert len(list(out.rglob("*.png"))) == 6
+
