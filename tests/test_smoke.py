@@ -101,6 +101,7 @@ def test_generate_uncrowding(tmp_path):
 
     assert Path(result).exists()
     assert (out / "annotation.csv").exists()
-    assert len(list(out.rglob("*.png"))) == 8
+    # 4 arrangements * 2 vernier types (0, 1) * 2 modes (inside, outside) = 16 images
+    assert len(list(out.rglob("*.png"))) == 16
 
 

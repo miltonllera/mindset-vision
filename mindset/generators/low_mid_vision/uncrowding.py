@@ -138,65 +138,74 @@ class DrawUncrowding(DrawStimuli):
         return patch
 
 
-def sample_grid_structure(max_cols: int = 7):
+def get_all_grid_structures(max_cols: int = 7):
     """
-    sample grid rows and column configurations according to rules:
+    generate all unique grid arrangements according to rules:
     - Max 3 rows (1 or 3 rows, centered).
-    - Center row has odd number of columns from odd numbers <= max_cols.
-    - If 3 rows, top & bottom rows have odd number of columns <= center row columns.
+    - Center row has odd number of columns <= max_cols.
+    - If 3 rows, top & bottom rows have equal odd number of columns <= center row columns.
     - Added top and bottom rows share the exact same structure (horizontal axis symmetry).
     - Max 2 distinct shapes in the image.
     - Each row can be uniform (all same shape) or alternating (between 2 shapes).
 
     Returns:
-        grid_rows: List[List[int]] shape IDs for each row.
-        pattern_str: String formatted as "row_len:shape_pattern;..."
+        List[Tuple[List[List[int]], str]]: List of (grid_rows, pattern_str) pairs.
     """
     all_shapes = [SQUARE, CIRCLE, HEXAGON]
+    shape_subsets = []
+    for s in all_shapes:
+        shape_subsets.append([s])
+    for i in range(len(all_shapes)):
+        for j in range(i + 1, len(all_shapes)):
+            shape_subsets.append([all_shapes[i], all_shapes[j]])
 
-    num_distinct = random.choice([1, 2])
-    selected_shapes = random.sample(all_shapes, k=num_distinct)
-
-    possible_center_cols = [c for c in range(1, max_cols + 1, 2)]
-    if not possible_center_cols:
-        possible_center_cols = [1]
-    c_center = random.choice(possible_center_cols)
-
-    def generate_row_pattern(length):
-        if len(selected_shapes) == 1:
-            return [selected_shapes[0]] * length
+    def get_row_patterns(length: int, shapes: list[int]):
+        patterns = []
+        if len(shapes) == 1:
+            patterns.append([shapes[0]] * length)
         else:
-            is_alternating = random.choice([True, False])
-            if is_alternating:
-                s1, s2 = selected_shapes[0], selected_shapes[1]
-                if random.choice([True, False]):
-                    s1, s2 = s2, s1
-                return [s1 if i % 2 == 0 else s2 for i in range(length)]
-            else:
-                s_uniform = random.choice(selected_shapes)
-                return [s_uniform] * length
+            s1, s2 = shapes[0], shapes[1]
+            patterns.append([s1] * length)
+            patterns.append([s2] * length)
+            if length >= 2:
+                patterns.append([s1 if k % 2 == 0 else s2 for k in range(length)])
+                patterns.append([s2 if k % 2 == 0 else s1 for k in range(length)])
+        return patterns
 
-    p_center = generate_row_pattern(c_center)
+    arrangements = []
+    seen_patterns = set()
+    odd_cols = [c for c in range(1, max_cols + 1, 2)]
 
-    num_rows = random.choice([1, 3])
+    for shapes in shape_subsets:
+        for c_center in odd_cols:
+            center_patterns = get_row_patterns(c_center, shapes)
 
-    if num_rows == 3:
-        possible_flanker_cols = [c for c in range(1, max_cols + 1, 2) if c <= c_center]
-        c_flanker = random.choice(possible_flanker_cols)
-        p_flanker = generate_row_pattern(c_flanker)
+            # 1-row grids
+            for p_center in center_patterns:
+                grid = [p_center]
+                pat_str = f"{len(p_center)}:" + ",".join(str(x) for x in p_center)
+                if pat_str not in seen_patterns:
+                    seen_patterns.add(pat_str)
+                    arrangements.append((grid, pat_str))
 
-        # Symmetry along horizontal axis: top row and bottom row are identical
-        grid_rows = [p_flanker, p_center, p_flanker]
-    else:
-        grid_rows = [p_center]
+            # 3-row grids
+            flanker_cols = [c for c in odd_cols if c <= c_center]
+            for c_flanker in flanker_cols:
+                flanker_patterns = get_row_patterns(c_flanker, shapes)
+                for p_center in center_patterns:
+                    for p_flanker in flanker_patterns:
+                        grid = [p_flanker, p_center, p_flanker]
+                        parts = [
+                            f"{len(p_flanker)}:" + ",".join(str(x) for x in p_flanker),
+                            f"{len(p_center)}:" + ",".join(str(x) for x in p_center),
+                            f"{len(p_flanker)}:" + ",".join(str(x) for x in p_flanker),
+                        ]
+                        pat_str = ";".join(parts)
+                        if pat_str not in seen_patterns:
+                            seen_patterns.add(pat_str)
+                            arrangements.append((grid, pat_str))
 
-    pattern_parts = []
-    for r_pattern in grid_rows:
-        shapes_str = ",".join(str(s) for s in r_pattern)
-        pattern_parts.append(f"{len(r_pattern)}:{shapes_str}")
-
-    pattern_str = ";".join(pattern_parts)
-    return grid_rows, pattern_str
+    return arrangements
 
 
 def generate_uncrowding_stimulus(
@@ -307,43 +316,37 @@ def generate_uncrowding_stimulus(
 class UncrowdingConfig(GeneratorConfig):
     """config for uncrowding dataset."""
 
-    num_samples_vernier_inside: int = field(
-        default=100,
+    num_samples_vernier_inside: int | None = field(
+        default=None,
         metadata={
-            "min": 1,
-            "max": 10000,
-            "step": 10,
-            "label": "vernier inside samples",
+            "label": "vernier inside samples (None for all arrangements)",
         },
     )
-    num_samples_vernier_outside: int = field(
-        default=100,
+    num_samples_vernier_outside: int | None = field(
+        default=None,
         metadata={
-            "min": 1,
-            "max": 10000,
-            "step": 10,
-            "label": "vernier outside samples",
+            "label": "vernier outside samples (None for all arrangements)",
         },
     )
-    min_vernier_offset: int = field(
-        default=1,
-        metadata={"min": 1, "max": 20, "label": "min vernier offset (px)"},
-    )
-    max_vernier_offset: int = field(
-        default=5,
-        metadata={"min": 1, "max": 30, "label": "max vernier offset (px)"},
+    vernier_offset: int = field(
+        default=2,
+        metadata={
+            "min": 2,
+            "max": 20,
+            "label": "vernier horizontal offset/separation (px)",
+        },
     )
     bar_width: int = field(
         default=2,
         metadata={"min": 1, "max": 10, "label": "vernier & stroke width"},
     )
     bar_height: int = field(
-        default=5,
+        default=10,
         metadata={"min": 2, "max": 30, "label": "vernier bar height (px)"},
     )
     max_cols: int = field(
-        default=7,
-        metadata={"min": 1, "max": 7, "step": 2, "label": "max grid columns"},
+        default=5,
+        metadata={"min": 1, "max": 15, "step": 2, "label": "max grid columns"},
     )
     shape_size: int = field(
         default=32,
@@ -378,6 +381,8 @@ def generate_all(config: UncrowdingConfig):
         bar_height=config.bar_height,
     )
 
+    all_arrangements = get_all_grid_structures(max_cols=config.max_cols)
+
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
         writer = csv.writer(annfile)
         writer.writerow(
@@ -400,27 +405,25 @@ def generate_all(config: UncrowdingConfig):
                 else config.num_samples_vernier_inside
             )
 
-            for v_type in vernier_type:
-                for n in range(num_requested // len(vernier_type)):
-                    grid_rows, pattern_str = sample_grid_structure(
-                        max_cols=config.max_cols
-                    )
-                    vernier_offset = random.randint(
-                        config.min_vernier_offset, config.max_vernier_offset
-                    )
+            if num_requested is not None and num_requested < len(all_arrangements):
+                mode_arrangements = random.sample(all_arrangements, k=num_requested)
+            else:
+                mode_arrangements = list(all_arrangements)
 
+            for v_type in vernier_type:
+                for n, (grid_rows, pattern_str) in enumerate(mode_arrangements):
                     img = generate_uncrowding_stimulus(
                         drawer=drawer,
                         grid_rows=grid_rows,
                         vernier_type=v_type,
-                        vernier_offset=vernier_offset,
+                        vernier_offset=config.vernier_offset,
                         vernier_in_out=v_mode,
                         shape_size=config.shape_size,
                         canvas_size=config.canvas_size,
                     )
 
                     unique_hex = uuid.uuid4().hex[:8]
-                    file_name = f"{v_mode}_v{v_type}_offset{vernier_offset}_{n}_{unique_hex}.png"
+                    file_name = f"{v_mode}_v{v_type}_offset{config.vernier_offset}_{n}_{unique_hex}.png"
                     rel_path = Path(v_mode) / str(v_type) / file_name
 
                     img.save(output_folder / rel_path)
@@ -429,7 +432,7 @@ def generate_all(config: UncrowdingConfig):
                             rel_path,
                             v_mode,
                             v_type,
-                            vernier_offset,
+                            config.vernier_offset,
                             pattern_str,
                             drawer.background,
                             config.shape_size,
