@@ -86,3 +86,22 @@ def test_generate_relational_vs_coordinate(tmp_path):
     # 2 samples * 3 conditions (basis, coord change, relation change) = 6 images
     assert len(list(out.rglob("*.png"))) == 6
 
+
+def test_generate_uncrowding(tmp_path):
+    """smoke test: generate a small uncrowding dataset."""
+    from mindset.generators.low_mid_vision.uncrowding import generate_all
+
+    out = tmp_path / "uncrowding-smoke"
+
+    result = generate_all(
+        num_samples_vernier_inside=4,
+        num_samples_vernier_outside=4,
+        output_folder=str(out),
+    )
+
+    assert Path(result).exists()
+    assert (out / "annotation.csv").exists()
+    # 4 arrangements * 2 vernier types (0, 1) * 2 modes (inside, outside) = 16 images
+    assert len(list(out.rglob("*.png"))) == 16
+
+

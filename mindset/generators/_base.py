@@ -16,8 +16,8 @@ from mindset.utils import delete_and_recreate_path
 class GeneratorConfig:
     """base config shared by all generators."""
 
-    canvas_size: list = field(
-        default_factory=lambda: [224, 224],
+    canvas_size: tuple[int, int] = field(
+        default_factory=lambda: (224, 224),
         metadata={"min": 32, "max": 1024, "step": 16, "label": "canvas size"},
     )
     background_color: list = field(
