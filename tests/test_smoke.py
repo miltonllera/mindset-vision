@@ -18,12 +18,13 @@ def test_generator_registry():
     from mindset.generators import list_generators
 
     registry = _load_registry()
-    assert len(registry) == 33
+    assert len(registry) == 34
 
     cats = list_generators()
     assert len(cats["visual_illusions"]) == 10
     assert len(cats["low_mid_vision"]) == 9
-    assert len(cats["shape_recognition"]) == 14
+    assert len(cats["shape_recognition"]) == 15
+
 
 
 def test_generate_ebbinghaus():
@@ -85,4 +86,22 @@ def test_generate_relational_vs_coordinate(tmp_path):
     assert (out / "annotation.csv").exists()
     # 2 samples * 3 conditions (basis, coord change, relation change) = 6 images
     assert len(list(out.rglob("*.png"))) == 6
+
+
+def test_generate_object_manipulations(tmp_path):
+    """smoke test: generate a small object_manipulations dataset."""
+    from mindset.generators.shape_recognition.object_manipulations import generate_all
+
+    out = tmp_path / "object-manipulations-smoke"
+
+    result = generate_all(
+        texture_mode="lines",
+        outline_mode="dotted",
+        output_folder=str(out),
+    )
+
+    assert Path(result).exists()
+    assert (out / "annotation.csv").exists()
+    assert len(list(out.rglob("*.png"))) > 0
+
 
