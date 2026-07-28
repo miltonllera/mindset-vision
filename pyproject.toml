@@ -33,6 +33,8 @@ dependencies = [
     "scikit-image>=0.26.0",
     "pycairo>=1.25.0",
     "shapely>=2.0.0",
+    "segment-anything>=1.0",
+    "transformers>=4.30.0",
 ]
 
 [project.optional-dependencies]
