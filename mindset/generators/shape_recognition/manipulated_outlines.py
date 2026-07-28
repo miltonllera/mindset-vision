@@ -1,9 +1,11 @@
 """manipulated outlines dataset generator using Shapely and PyCairo."""
 
 import csv
+import itertools
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import cairo
 from shapely.geometry import LineString
@@ -12,6 +14,12 @@ from tqdm.auto import tqdm
 from mindset.generators._base import GeneratorConfig, generator, register
 from mindset.shapes.manipulation import BaseDrawManipulatedObject
 
+
+def _to_list(val: Any) -> list[Any]:
+    """ensure val is a list of options."""
+    if isinstance(val, (list, tuple)):
+        return list(val)
+    return [val]
 
 
 class DrawManipulatedOutline(BaseDrawManipulatedObject):
@@ -242,8 +250,8 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
             "label": "object longest side (px)",
         },
     )
-    outline_mode: str = field(
-        default="dotted",
+    outline_mode: list = field(
+        default_factory=lambda: ["dotted"],
         metadata={
             "choices": [
                 "solid",
@@ -254,7 +262,7 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
                 "asset_shape",
                 "none",
             ],
-            "label": "outline manipulation mode",
+            "label": "outline manipulation mode options",
         },
     )
     outline_color: list = field(
@@ -265,35 +273,25 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
         default=2,
         metadata={"min": 1, "max": 20, "step": 1, "label": "outline width"},
     )
-    outline_asset_image: str = field(
-        default="",
-        metadata={"label": "asset category or image path for outline shape stamping"},
+    outline_asset_image: list = field(
+        default_factory=lambda: [""],
+        metadata={"label": "asset categories or image paths for outline shape stamping"},
     )
-    rotate_outline_shapes: bool = field(
-        default=False,
-        metadata={"label": "rotate outline shapes to align with edge tangents"},
+    rotate_outline_shapes: list = field(
+        default_factory=lambda: [False],
+        metadata={"label": "rotate outline shapes options (True/False)"},
     )
-    outline_obj_distance: float = field(
-        default=12.0,
-        metadata={
-            "min": 1.0,
-            "max": 50.0,
-            "step": 1.0,
-            "label": "distance between dots/dashes/elements along outline",
-        },
+    outline_obj_distance: list = field(
+        default_factory=lambda: [12.0],
+        metadata={"label": "distance between dots/dashes/elements along outline options"},
     )
-    outline_obj_size: float = field(
-        default=6.0,
-        metadata={
-            "min": 1.0,
-            "max": 50.0,
-            "step": 0.5,
-            "label": "size/length of dots/dashes/elements along outline",
-        },
+    outline_obj_size: list = field(
+        default_factory=lambda: [6.0],
+        metadata={"label": "size/length of dots/dashes/elements along outline options"},
     )
-    fill_interior: bool = field(
-        default=True,
-        metadata={"label": "fill object interior with solid color silhouette"},
+    fill_interior: list = field(
+        default_factory=lambda: [True],
+        metadata={"label": "fill object interior options (True/False)"},
     )
     interior_color: list = field(
         default_factory=lambda: [255, 255, 255],
@@ -309,7 +307,7 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
 @register("manipulated_outlines", "shape_recognition")
 @generator(ManipulatedOutlinesConfig)
 def generate_all(config: ManipulatedOutlinesConfig):
-    """generate manipulated outlines dataset with vector outline controls."""
+    """generate manipulated outlines dataset across all parameter combinations."""
     output_folder = Path(config.output_folder)
     linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
@@ -317,25 +315,19 @@ def generate_all(config: ManipulatedOutlinesConfig):
     for cat in all_categories:
         (output_folder / cat).mkdir(exist_ok=True, parents=True)
 
-    ds = DrawManipulatedOutline(
-        background=config.background_color,
-        canvas_size=config.canvas_size,
-        antialiasing=config.antialiasing,
-        obj_longest_side=config.object_longest_side,
-        outline_mode=config.outline_mode,
-        outline_color=config.outline_color,
-        outline_width=config.outline_width,
-        outline_asset_image=config.outline_asset_image,
-        rotate_outline_shapes=config.rotate_outline_shapes,
-        outline_obj_distance=config.outline_obj_distance,
-        outline_obj_size=config.outline_obj_size,
-        fill_interior=config.fill_interior,
-        interior_color=config.interior_color,
-        linedrawing_input_folder=config.linedrawing_input_folder,
-    )
-
     image_files = sorted(linedrawing_input_folder.rglob("*.jpg")) + sorted(
         linedrawing_input_folder.rglob("*.png")
+    )
+
+    modes = _to_list(config.outline_mode)
+    sizes = [float(s) for s in _to_list(config.outline_obj_size)]
+    distances = [float(d) for d in _to_list(config.outline_obj_distance)]
+    rotates = [bool(r) for r in _to_list(config.rotate_outline_shapes)]
+    fills = [bool(f) for f in _to_list(config.fill_interior)]
+    asset_images = _to_list(config.outline_asset_image)
+
+    combinations = list(
+        itertools.product(modes, sizes, distances, rotates, fills, asset_images)
     )
 
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
@@ -356,26 +348,64 @@ def generate_all(config: ManipulatedOutlinesConfig):
             ]
         )
 
-        for n, img_path in enumerate(tqdm(image_files)):
+        n = 0
+        for img_path in tqdm(image_files, desc="processing categories"):
             class_name = img_path.parent.stem
             image_name = img_path.stem
-            img = ds.generate_image(img_path)
-            path = Path(class_name) / f"{image_name}.png"
-            img.save(output_folder / path)
-            writer.writerow(
-                [
-                    path,
-                    class_name,
-                    config.outline_mode,
-                    config.outline_asset_image,
-                    config.rotate_outline_shapes,
-                    config.fill_interior,
-                    ds.background,
-                    config.outline_color,
-                    config.outline_obj_distance,
-                    config.outline_obj_size,
-                    n,
-                ]
-            )
+
+            for o_mode, o_size, o_dist, o_rot, o_fill, o_asset in combinations:
+                ds = DrawManipulatedOutline(
+                    background=config.background_color,
+                    canvas_size=config.canvas_size,
+                    antialiasing=config.antialiasing,
+                    obj_longest_side=config.object_longest_side,
+                    outline_mode=o_mode,
+                    outline_color=config.outline_color,
+                    outline_width=config.outline_width,
+                    outline_asset_image=o_asset,
+                    rotate_outline_shapes=o_rot,
+                    outline_obj_distance=o_dist,
+                    outline_obj_size=o_size,
+                    fill_interior=o_fill,
+                    interior_color=config.interior_color,
+                    linedrawing_input_folder=config.linedrawing_input_folder,
+                )
+
+                img = ds.generate_image(img_path)
+
+                # Construct filename reflecting the exact manipulations
+                fmt_sz = int(o_size) if o_size == int(o_size) else o_size
+                fmt_dist = int(o_dist) if o_dist == int(o_dist) else o_dist
+
+                name_parts = [image_name, f"out-{o_mode}"]
+                if o_mode != "solid" and o_mode != "none":
+                    name_parts.append(f"sz{fmt_sz}_dist{fmt_dist}")
+                if o_rot:
+                    name_parts.append("rot")
+                if not o_fill:
+                    name_parts.append("nofill")
+                if o_asset:
+                    name_parts.append(f"asset-{Path(o_asset).stem}")
+
+                filename = "_".join(name_parts) + ".png"
+                path = Path(class_name) / filename
+
+                img.save(output_folder / path)
+                writer.writerow(
+                    [
+                        path,
+                        class_name,
+                        o_mode,
+                        o_asset,
+                        o_rot,
+                        o_fill,
+                        ds.background,
+                        config.outline_color,
+                        o_dist,
+                        o_size,
+                        n,
+                    ]
+                )
+                n += 1
 
     return str(output_folder)

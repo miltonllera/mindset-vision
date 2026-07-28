@@ -1,9 +1,11 @@
 """manipulated textures dataset generator using Shapely and PyCairo."""
 
 import csv
+import itertools
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import cairo
 from shapely.geometry import LineString
@@ -13,12 +15,19 @@ from mindset.generators._base import GeneratorConfig, generator, register
 from mindset.shapes.manipulation import BaseDrawManipulatedObject
 
 
+def _to_list(val: Any) -> list[Any]:
+    """ensure val is a list of options."""
+    if isinstance(val, (list, tuple)):
+        return list(val)
+    return [val]
+
+
 class DrawManipulatedTexture(BaseDrawManipulatedObject):
-    """draws object texture manipulations (positive or inverted mask) using PyCairo and Shapely."""
+    """draws object texture manipulations (foreground or background target region) using PyCairo and Shapely."""
 
     def __init__(
         self,
-        invert_mask=False,
+        target_region="foreground",
         texture_mode="lines",
         texture_color=(255, 255, 255),
         texture_line_spacing=10,
@@ -32,7 +41,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.invert_mask = invert_mask
+        self.target_region = target_region
         self.texture_mode = texture_mode
         self.texture_color = texture_color
         self.texture_line_spacing = texture_line_spacing
@@ -44,13 +53,13 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
         self.outline_width = outline_width
 
     def _render_texture(self, ctx, outer_polygons):
-        """render vector texture inside polygon mask or inverted negative mask."""
+        """render vector texture inside polygon mask or inverted background mask."""
         if self.texture_mode == "none":
             return
 
         canvas_w, canvas_h = self.canvas_size
 
-        if self.invert_mask:
+        if self.target_region == "background":
             # Fill shape interior first with solid white silhouette
             ctx.save()
             int_r, int_g, int_b = self._normalize_color((255, 255, 255))
@@ -61,7 +70,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                 ctx.fill()
             ctx.restore()
 
-            # Invert mask using EVEN_ODD fill rule
+            # Invert mask for background using EVEN_ODD fill rule
             ctx.save()
             ctx.set_fill_rule(cairo.FILL_RULE_EVEN_ODD)
             ctx.rectangle(0, 0, canvas_w, canvas_h)
@@ -71,7 +80,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
             ctx.clip()
 
         else:
-            # Positive mask: clip to outer polygons
+            # Foreground mask: clip to outer polygons
             ctx.save()
             for poly in outer_polygons:
                 exterior_ls = LineString(poly.exterior.coords)
@@ -86,7 +95,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
             ctx.paint()
 
         elif self.texture_mode == "lines":
-            if not self.invert_mask:
+            if self.target_region == "foreground":
                 ctx.set_source_rgb(bg_r, bg_g, bg_b)
                 ctx.paint()
 
@@ -114,7 +123,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                 ctx.stroke()
 
         elif self.texture_mode == "grid":
-            if not self.invert_mask:
+            if self.target_region == "foreground":
                 ctx.set_source_rgb(bg_r, bg_g, bg_b)
                 ctx.paint()
 
@@ -133,7 +142,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                 ctx.stroke()
 
         elif self.texture_mode == "dots":
-            if not self.invert_mask:
+            if self.target_region == "foreground":
                 ctx.set_source_rgb(bg_r, bg_g, bg_b)
                 ctx.paint()
 
@@ -147,7 +156,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                     ctx.fill()
 
         elif self.texture_mode == "checkerboard":
-            if not self.invert_mask:
+            if self.target_region == "foreground":
                 ctx.set_source_rgb(bg_r, bg_g, bg_b)
                 ctx.paint()
 
@@ -161,7 +170,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                         ctx.fill()
 
         elif self.texture_mode == "asset_shape":
-            if not self.invert_mask:
+            if self.target_region == "foreground":
                 ctx.set_source_rgb(bg_r, bg_g, bg_b)
                 ctx.paint()
 
@@ -239,12 +248,15 @@ class ManipulatedTexturesConfig(GeneratorConfig):
             "label": "object longest side (px)",
         },
     )
-    invert_mask: bool = field(
-        default=False,
-        metadata={"label": "invert mask (texturize background instead of foreground)"},
+    target_region: list = field(
+        default_factory=lambda: ["foreground"],
+        metadata={
+            "choices": ["foreground", "background"],
+            "label": "target region for texture (foreground/background options)",
+        },
     )
-    texture_mode: str = field(
-        default="lines",
+    texture_mode: list = field(
+        default_factory=lambda: ["lines"],
         metadata={
             "choices": [
                 "flat",
@@ -255,33 +267,28 @@ class ManipulatedTexturesConfig(GeneratorConfig):
                 "asset_shape",
                 "none",
             ],
-            "label": "texture manipulation mode",
+            "label": "texture manipulation mode options",
         },
     )
     texture_color: list = field(
         default_factory=lambda: [255, 255, 255],
         metadata={"label": "texture color (RGB)"},
     )
-    texture_line_spacing: int = field(
-        default=10,
-        metadata={"min": 2, "max": 50, "step": 1, "label": "texture pattern spacing"},
+    texture_line_spacing: list = field(
+        default_factory=lambda: [10],
+        metadata={"label": "texture pattern spacing options"},
     )
     texture_line_width: int = field(
         default=2,
         metadata={"min": 1, "max": 20, "step": 1, "label": "texture pattern line width"},
     )
-    texture_angle: float = field(
-        default=45.0,
-        metadata={
-            "min": 0.0,
-            "max": 360.0,
-            "step": 5.0,
-            "label": "texture pattern angle (degrees)",
-        },
+    texture_angle: list = field(
+        default_factory=lambda: [45.0],
+        metadata={"label": "texture pattern angle options (degrees)"},
     )
-    texture_asset_image: str = field(
-        default="",
-        metadata={"label": "asset category or image path for texture shape pattern"},
+    texture_asset_image: list = field(
+        default_factory=lambda: [""],
+        metadata={"label": "asset categories or image paths for texture shape pattern"},
     )
     asset_shape_size: float = field(
         default=12.0,
@@ -302,7 +309,7 @@ class ManipulatedTexturesConfig(GeneratorConfig):
 @register("manipulated_textures", "shape_recognition")
 @generator(ManipulatedTexturesConfig)
 def generate_all(config: ManipulatedTexturesConfig):
-    """generate manipulated textures dataset with vector texture controls."""
+    """generate manipulated textures dataset across all parameter combinations."""
     output_folder = Path(config.output_folder)
     linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
@@ -310,24 +317,18 @@ def generate_all(config: ManipulatedTexturesConfig):
     for cat in all_categories:
         (output_folder / cat).mkdir(exist_ok=True, parents=True)
 
-    ds = DrawManipulatedTexture(
-        background=config.background_color,
-        canvas_size=config.canvas_size,
-        antialiasing=config.antialiasing,
-        obj_longest_side=config.object_longest_side,
-        invert_mask=config.invert_mask,
-        texture_mode=config.texture_mode,
-        texture_color=config.texture_color,
-        texture_line_spacing=config.texture_line_spacing,
-        texture_line_width=config.texture_line_width,
-        texture_angle=config.texture_angle,
-        texture_asset_image=config.texture_asset_image,
-        asset_shape_size=config.asset_shape_size,
-        linedrawing_input_folder=config.linedrawing_input_folder,
-    )
-
     image_files = sorted(linedrawing_input_folder.rglob("*.jpg")) + sorted(
         linedrawing_input_folder.rglob("*.png")
+    )
+
+    modes = _to_list(config.texture_mode)
+    angles = [float(a) for a in _to_list(config.texture_angle)]
+    spacings = [int(s) for s in _to_list(config.texture_line_spacing)]
+    target_regions = _to_list(config.target_region)
+    asset_images = _to_list(config.texture_asset_image)
+
+    combinations = list(
+        itertools.product(modes, angles, spacings, target_regions, asset_images)
     )
 
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
@@ -336,7 +337,7 @@ def generate_all(config: ManipulatedTexturesConfig):
             [
                 "Path",
                 "Class",
-                "InvertMask",
+                "TargetRegion",
                 "TextureMode",
                 "TextureAssetImage",
                 "TextureAngle",
@@ -347,25 +348,63 @@ def generate_all(config: ManipulatedTexturesConfig):
             ]
         )
 
-        for n, img_path in enumerate(tqdm(image_files)):
+        n = 0
+        for img_path in tqdm(image_files, desc="processing categories"):
             class_name = img_path.parent.stem
             image_name = img_path.stem
-            img = ds.generate_image(img_path)
-            path = Path(class_name) / f"{image_name}.png"
-            img.save(output_folder / path)
-            writer.writerow(
-                [
-                    path,
-                    class_name,
-                    config.invert_mask,
-                    config.texture_mode,
-                    config.texture_asset_image,
-                    config.texture_angle,
-                    config.texture_line_spacing,
-                    ds.background,
-                    config.texture_color,
-                    n,
-                ]
-            )
+
+            for t_mode, t_angle, t_spacing, t_region, t_asset in combinations:
+                ds = DrawManipulatedTexture(
+                    background=config.background_color,
+                    canvas_size=config.canvas_size,
+                    antialiasing=config.antialiasing,
+                    obj_longest_side=config.object_longest_side,
+                    target_region=t_region,
+                    texture_mode=t_mode,
+                    texture_color=config.texture_color,
+                    texture_line_spacing=t_spacing,
+                    texture_line_width=config.texture_line_width,
+                    texture_angle=t_angle,
+                    texture_asset_image=t_asset,
+                    asset_shape_size=config.asset_shape_size,
+                    linedrawing_input_folder=config.linedrawing_input_folder,
+                )
+
+                img = ds.generate_image(img_path)
+
+                # Construct filename reflecting the exact manipulations
+                name_parts = [image_name, f"tex-{t_mode}"]
+                if t_mode in ["lines", "asset_shape"]:
+                    name_parts.append(f"ang{int(t_angle)}")
+                if t_mode in ["lines", "grid", "dots", "checkerboard", "asset_shape"]:
+                    name_parts.append(f"spc{t_spacing}")
+
+                if t_region == "background":
+                    name_parts.append("bg")
+                else:
+                    name_parts.append("fg")
+
+                if t_asset:
+                    name_parts.append(f"asset-{Path(t_asset).stem}")
+
+                filename = "_".join(name_parts) + ".png"
+                path = Path(class_name) / filename
+
+                img.save(output_folder / path)
+                writer.writerow(
+                    [
+                        path,
+                        class_name,
+                        t_region,
+                        t_mode,
+                        t_asset,
+                        t_angle,
+                        t_spacing,
+                        ds.background,
+                        config.texture_color,
+                        n,
+                    ]
+                )
+                n += 1
 
     return str(output_folder)
