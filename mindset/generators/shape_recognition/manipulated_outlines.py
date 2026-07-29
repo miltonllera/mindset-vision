@@ -29,10 +29,9 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
         self,
         outline_mode="dotted",
         outline_color=(255, 255, 255),
-        outline_width=2,
+        outline_scale=6.0,
+        outline_distance=12.0,
         outline_asset_image="",
-        outline_obj_distance=12.0,
-        outline_obj_size=6.0,
         rotate_outline_shapes=False,
         fill_interior=True,
         interior_color=(255, 255, 255),
@@ -40,28 +39,12 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+
         self.outline_mode = outline_mode
         self.outline_color = outline_color
-        self.outline_width = outline_width
+        self.outline_scale = float(outline_scale)
+        self.outline_distance = float(outline_distance)
         self.outline_asset_image = outline_asset_image
-
-        # Handle backward-compatible alias kwargs if provided
-        if "dot_distance" in kwargs:
-            outline_obj_distance = kwargs.pop("dot_distance")
-        if "dash_gap" in kwargs:
-            outline_obj_distance = kwargs.pop("dash_gap")
-
-        if "dot_size" in kwargs:
-            outline_obj_size = kwargs.pop("dot_size")
-        if "dash_length" in kwargs:
-            outline_obj_size = kwargs.pop("dash_length")
-        if "oriented_line_length" in kwargs:
-            outline_obj_size = kwargs.pop("oriented_line_length")
-        if "asset_shape_size" in kwargs:
-            outline_obj_size = kwargs.pop("asset_shape_size")
-
-        self.outline_obj_distance = outline_obj_distance
-        self.outline_obj_size = outline_obj_size
         self.rotate_outline_shapes = rotate_outline_shapes
         self.fill_interior = fill_interior
         self.interior_color = interior_color
@@ -91,15 +74,15 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
         ctx.set_source_rgb(out_r, out_g, out_b)
 
         if self.outline_mode == "solid":
-            ctx.set_line_width(self.outline_width)
+            ctx.set_line_width(max(0.5, self.outline_scale))
             for ls in linestrings:
                 self._draw_path_to_cairo(ctx, ls)
                 ctx.stroke()
 
         elif self.outline_mode == "dashed":
-            ctx.set_line_width(self.outline_width)
-            dash_len = max(1.0, self.outline_obj_size)
-            dash_gap = max(1.0, self.outline_obj_distance)
+            ctx.set_line_width(max(0.5, self.outline_scale))
+            dash_len = max(1.0, self.outline_scale)
+            dash_gap = max(1.0, self.outline_distance)
             ctx.set_dash([dash_len, dash_gap])
             for ls in linestrings:
                 self._draw_path_to_cairo(ctx, ls)
@@ -107,8 +90,8 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
             ctx.set_dash([])
 
         elif self.outline_mode == "dotted":
-            step = max(1.0, self.outline_obj_distance)
-            radius = max(0.5, self.outline_obj_size / 2.0)
+            step = max(1.0, self.outline_distance)
+            radius = max(0.5, self.outline_scale / 2.0)
 
             for ls in linestrings:
                 length = ls.length
@@ -122,9 +105,9 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
                     ctx.fill()
 
         elif self.outline_mode == "oriented_lines":
-            step = max(1.0, self.outline_obj_distance)
-            half_len = max(1.0, self.outline_obj_size / 2.0)
-            ctx.set_line_width(self.outline_width)
+            step = max(1.0, self.outline_distance)
+            half_len = max(1.0, self.outline_scale / 2.0)
+            ctx.set_line_width(max(0.5, self.outline_scale / 3.0))
 
             for ls in linestrings:
                 length = ls.length
@@ -150,8 +133,8 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
                     ctx.stroke()
 
         elif self.outline_mode == "oriented_shapes":
-            step = max(1.0, self.outline_obj_distance)
-            half_sz = max(1.0, self.outline_obj_size / 2.0)
+            step = max(1.0, self.outline_distance)
+            half_sz = max(1.0, self.outline_scale / 2.0)
 
             for ls in linestrings:
                 length = ls.length
@@ -171,15 +154,15 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
                     ctx.translate(p1.x, p1.y)
                     if angle != 0:
                         ctx.rotate(angle)
-                    ctx.rectangle(-half_sz, -half_sz, self.outline_obj_size, self.outline_obj_size)
+                    ctx.rectangle(-half_sz, -half_sz, self.outline_scale, self.outline_scale)
                     ctx.fill()
                     ctx.restore()
 
         elif self.outline_mode == "asset_shape":
             asset_contour = self.load_asset_vector_contour(self.outline_asset_image)
             if asset_contour is not None:
-                step = max(2.0, self.outline_obj_distance)
-                stamp_sz = max(2.0, self.outline_obj_size)
+                step = max(1.0, self.outline_distance)
+                stamp_sz = max(1.0, self.outline_scale)
 
                 for ls in linestrings:
                     length = ls.length
@@ -269,10 +252,6 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
         default_factory=lambda: [255, 255, 255],
         metadata={"label": "outline color (RGB)"},
     )
-    outline_width: int = field(
-        default=2,
-        metadata={"min": 1, "max": 20, "step": 1, "label": "outline width"},
-    )
     outline_asset_image: list = field(
         default_factory=lambda: [""],
         metadata={"label": "asset categories or image paths for outline shape stamping"},
@@ -281,13 +260,13 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
         default_factory=lambda: [False],
         metadata={"label": "rotate outline shapes options (True/False)"},
     )
-    outline_obj_distance: list = field(
+    outline_distance: list = field(
         default_factory=lambda: [12.0],
         metadata={"label": "distance between dots/dashes/elements along outline options"},
     )
-    outline_obj_size: list = field(
+    outline_scale: list = field(
         default_factory=lambda: [6.0],
-        metadata={"label": "size/length of dots/dashes/elements along outline options"},
+        metadata={"label": "scale/size/length of dots/dashes/elements along outline options"},
     )
     fill_interior: list = field(
         default_factory=lambda: [True],
@@ -320,14 +299,14 @@ def generate_all(config: ManipulatedOutlinesConfig):
     )
 
     modes = _to_list(config.outline_mode)
-    sizes = [float(s) for s in _to_list(config.outline_obj_size)]
-    distances = [float(d) for d in _to_list(config.outline_obj_distance)]
+    scales = [float(s) for s in _to_list(config.outline_scale)]
+    distances = [float(d) for d in _to_list(config.outline_distance)]
     rotates = [bool(r) for r in _to_list(config.rotate_outline_shapes)]
     fills = [bool(f) for f in _to_list(config.fill_interior)]
     asset_images = _to_list(config.outline_asset_image)
 
     combinations = list(
-        itertools.product(modes, sizes, distances, rotates, fills, asset_images)
+        itertools.product(modes, scales, distances, rotates, fills, asset_images)
     )
 
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
@@ -342,8 +321,8 @@ def generate_all(config: ManipulatedOutlinesConfig):
                 "FillInterior",
                 "BackgroundColor",
                 "OutlineColor",
-                "OutlineObjDistance",
-                "OutlineObjSize",
+                "OutlineDistance",
+                "OutlineScale",
                 "IterNum",
             ]
         )
@@ -353,7 +332,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
             class_name = img_path.parent.stem
             image_name = img_path.stem
 
-            for o_mode, o_size, o_dist, o_rot, o_fill, o_asset in combinations:
+            for o_mode, o_scale, o_dist, o_rot, o_fill, o_asset in combinations:
                 ds = DrawManipulatedOutline(
                     background=config.background_color,
                     canvas_size=config.canvas_size,
@@ -361,11 +340,10 @@ def generate_all(config: ManipulatedOutlinesConfig):
                     obj_longest_side=config.object_longest_side,
                     outline_mode=o_mode,
                     outline_color=config.outline_color,
-                    outline_width=config.outline_width,
                     outline_asset_image=o_asset,
                     rotate_outline_shapes=o_rot,
-                    outline_obj_distance=o_dist,
-                    outline_obj_size=o_size,
+                    outline_distance=o_dist,
+                    outline_scale=o_scale,
                     fill_interior=o_fill,
                     interior_color=config.interior_color,
                     linedrawing_input_folder=config.linedrawing_input_folder,
@@ -374,12 +352,15 @@ def generate_all(config: ManipulatedOutlinesConfig):
                 img = ds.generate_image(img_path)
 
                 # Construct filename reflecting the exact manipulations
-                fmt_sz = int(o_size) if o_size == int(o_size) else o_size
+                fmt_sc = int(o_scale) if o_scale == int(o_scale) else o_scale
                 fmt_dist = int(o_dist) if o_dist == int(o_dist) else o_dist
 
                 name_parts = [image_name, f"out-{o_mode}"]
                 if o_mode != "solid" and o_mode != "none":
-                    name_parts.append(f"sz{fmt_sz}_dist{fmt_dist}")
+                    name_parts.append(f"sc{fmt_sc}_dist{fmt_dist}")
+                elif o_mode == "solid":
+                    name_parts.append(f"sc{fmt_sc}")
+
                 if o_rot:
                     name_parts.append("rot")
                 if not o_fill:
@@ -402,7 +383,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
                         ds.background,
                         config.outline_color,
                         o_dist,
-                        o_size,
+                        o_scale,
                         n,
                     ]
                 )
