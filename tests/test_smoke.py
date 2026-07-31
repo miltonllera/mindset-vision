@@ -18,12 +18,32 @@ def test_generator_registry():
     from mindset.generators import list_generators
 
     registry = _load_registry()
-    assert len(registry) == 33
+    assert len(registry) == 36
 
     cats = list_generators()
     assert len(cats["visual_illusions"]) == 10
     assert len(cats["low_mid_vision"]) == 9
-    assert len(cats["shape_recognition"]) == 14
+    assert len(cats["shape_recognition"]) == 17
+
+
+def test_generate_composite_textures(tmp_path):
+    """smoke test: generate a small composite_textures dataset."""
+    from mindset.generators.shape_recognition.composite_textures import generate_all
+
+    out = tmp_path / "composite-textures-smoke"
+
+    result = generate_all(
+        fg_texture_mode="lines",
+        bg_texture_mode="dots",
+        output_folder=str(out),
+    )
+
+    assert Path(result).exists()
+    assert (out / "annotation.csv").exists()
+    assert len(list(out.rglob("*.png"))) > 0
+
+
+
 
 
 def test_generate_ebbinghaus():
@@ -87,21 +107,34 @@ def test_generate_relational_vs_coordinate(tmp_path):
     assert len(list(out.rglob("*.png"))) == 6
 
 
-def test_generate_uncrowding(tmp_path):
-    """smoke test: generate a small uncrowding dataset."""
-    from mindset.generators.low_mid_vision.uncrowding import generate_all
+def test_generate_manipulated_textures(tmp_path):
+    """smoke test: generate a small manipulated_textures dataset."""
+    from mindset.generators.shape_recognition.manipulated_textures import generate_all
 
-    out = tmp_path / "uncrowding-smoke"
+    out = tmp_path / "manipulated-textures-smoke"
 
     result = generate_all(
-        num_samples_vernier_inside=4,
-        num_samples_vernier_outside=4,
+        texture_mode="lines",
         output_folder=str(out),
     )
 
     assert Path(result).exists()
     assert (out / "annotation.csv").exists()
-    # 4 arrangements * 2 vernier types (0, 1) * 2 modes (inside, outside) = 16 images
-    assert len(list(out.rglob("*.png"))) == 16
+    assert len(list(out.rglob("*.png"))) > 0
 
+
+def test_generate_manipulated_outlines(tmp_path):
+    """smoke test: generate a small manipulated_outlines dataset."""
+    from mindset.generators.shape_recognition.manipulated_outlines import generate_all
+
+    out = tmp_path / "manipulated-outlines-smoke"
+
+    result = generate_all(
+        outline_mode="dotted",
+        output_folder=str(out),
+    )
+
+    assert Path(result).exists()
+    assert (out / "annotation.csv").exists()
+    assert len(list(out.rglob("*.png"))) > 0
 

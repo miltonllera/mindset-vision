@@ -26,10 +26,18 @@ def _load_registry():
     return REGISTRY
 
 
-def _num(s):
-    """parse a numeric string to int or float."""
-    f = float(s)
-    return int(f) if f == int(f) and "e" not in s.lower() else f
+def _parse_val(s):
+    """parse a CLI string to int, float, bool, or keep as str."""
+    if isinstance(s, str):
+        if s.lower() == "true":
+            return True
+        if s.lower() == "false":
+            return False
+    try:
+        f = float(s)
+        return int(f) if f == int(f) and "e" not in str(s).lower() else f
+    except (ValueError, TypeError):
+        return s
 
 
 def _parse_generator_args(config_cls, remaining):
@@ -44,7 +52,8 @@ def _parse_generator_args(config_cls, remaining):
             case t if t == bool:
                 gen_parser.add_argument(flag, action=argparse.BooleanOptionalAction, default=None)
             case t if t == list:
-                gen_parser.add_argument(flag, nargs="+", type=_num, default=None)
+                gen_parser.add_argument(flag, nargs="+", type=_parse_val, default=None)
+
             case t if t == int:
                 gen_parser.add_argument(flag, type=int, default=None)
             case t if t == float:

@@ -5,6 +5,7 @@ import pathlib
 import random
 import shutil
 import subprocess
+from typing import Any
 
 import cv2
 import numpy as np
@@ -20,6 +21,13 @@ DEFAULTS = {
     "antialiasing": True,
     "behaviour_if_present": "overwrite",
 }
+
+
+def to_list(val: Any) -> list[Any]:
+    """ensure val is a list of options."""
+    if isinstance(val, (list, tuple)):
+        return list(val)
+    return [val]
 
 
 def conditional_tqdm(iterable, enable_tqdm, **kwargs):
