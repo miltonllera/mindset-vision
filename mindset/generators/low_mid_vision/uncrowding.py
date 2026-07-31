@@ -1,577 +1,360 @@
 """uncrowding dataset generator."""
 
 import csv
+import math
 import random
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
-
-import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from tqdm.auto import tqdm
 
 from mindset.drawing.base import DrawStimuli
-from mindset.drawing.geometry import circle_perimeter, line, polygon, polygon_perimeter
 from mindset.generators._base import GeneratorConfig, generator, register
 from mindset.utils import apply_antialiasing
 
-# ---------------------------------------------------------------------------
-# shape pattern generators
-# ---------------------------------------------------------------------------
 
+# Shape identifier constants
+SQUARE = 1
+CIRCLE = 2
+HEXAGON = 3  # Flat face pointing up
 
-def all_test_shapes():
-    """return all test shape configurations for uncrowding experiments."""
-    return (
-        seven_shapesgen(5)
-        + shapesgen(5)
-        + Lynns_patterns()
-        + ten_random_patterns()
-        + Lynns_patterns()
-    )
-
-
-def shapesgen(max, emptyvect=True):
-    """generate shape pattern lists up to given max shape id."""
-    if max > 7:
-        return
-
-    s = [[]] if emptyvect else []
-    for i in range(1, max + 1):
-        s += [[i], [i, i, i], [i, i, i, i, i]]
-        for j in range(1, max + 1):
-            if j != i:
-                s += [[i, j, i, j, i]]
-    return s
-
-
-def seven_shapesgen(max, emptyvect=True):
-    """generate seven-element shape pattern lists."""
-    if max > 7:
-        return
-
-    s = [[]] if emptyvect else []
-    for i in range(1, max + 1):
-        s += [[i, i, i, i, i, i, i]]
-        for j in range(1, max + 1):
-            if j != i:
-                s += [[j, i, j, i, j, i, j]]
-    return s
-
-
-def Lynns_patterns():
-    """return Lynn's predefined uncrowding test patterns."""
-    squares = [1, 1, 1, 1, 1, 1, 1]
-    one_square = [0, 0, 0, 1, 0, 0, 0]
-    S = [squares]
-    for x in [6, 2]:
-        line1 = [x, 1, x, 1, x, 1, x]
-        line2 = [1, x, 1, x, 1, x, 1]
-        line0 = [x, 1, x, 0, x, 1, x]
-
-        columns = [line1, line1, line1]
-        checker = [line2, line1, line2]
-        if x == 6:
-            special = [1, x, 2, x, 1, x, 1]
-        else:
-            special = [1, x, 1, x, 6, x, 1]
-
-        checker_special = [line2, line1, special]
-        irreg = [[1, x, 1, x, x, 1, 1], line1, [1, 1, x, x, 1, x, 1]]
-        cross = [one_square, line1, one_square]
-        pompom = [line0, line1, line0]
-
-        S += [line1, columns, checker, irreg, pompom, cross, checker_special]
-    return S
-
-
-def ten_random_patterns(newone=False):
-    """return ten fixed random patterns (or generate new ones)."""
-    if newone:
-        patterns = np.zeros((10, 3, 7), dtype=int)
-        basis = [0, 1, 2, 6]
-        for pat in range(10):
-            for row in range(3):
-                for col in range(7):
-                    a = np.random.choice(basis)
-                    patterns[pat][row][col] = a
-        return patterns
-
-    return [
-        [[6, 1, 1, 0, 1, 6, 2], [0, 1, 0, 1, 2, 1, 1], [1, 0, 1, 6, 6, 2, 6]],
-        [[1, 6, 1, 1, 2, 0, 2], [6, 2, 2, 6, 0, 1, 2], [1, 1, 0, 6, 1, 1, 1]],
-        [[1, 6, 1, 2, 2, 0, 2], [1, 0, 6, 1, 2, 2, 6], [2, 2, 0, 1, 0, 2, 1]],
-        [[6, 6, 0, 1, 1, 6, 6], [1, 1, 1, 2, 2, 6, 1], [6, 6, 2, 1, 6, 0, 6]],
-        [[0, 6, 2, 2, 2, 6, 6], [2, 0, 1, 1, 6, 6, 6], [1, 0, 6, 0, 2, 6, 2]],
-        [[2, 1, 1, 6, 2, 6, 2], [6, 1, 0, 6, 1, 2, 1], [1, 6, 0, 2, 1, 2, 6]],
-        [[1, 1, 0, 6, 6, 6, 1], [1, 0, 0, 1, 2, 1, 1], [2, 1, 0, 2, 6, 1, 6]],
-        [[0, 6, 6, 2, 2, 0, 2], [1, 6, 1, 6, 6, 2, 2], [2, 1, 6, 1, 0, 2, 2]],
-        [[6, 1, 2, 6, 1, 0, 1], [0, 1, 6, 2, 0, 6, 2], [1, 0, 1, 2, 6, 6, 6]],
-        [[1, 0, 1, 6, 2, 6, 2], [0, 6, 6, 2, 0, 1, 1], [6, 6, 1, 6, 0, 2, 1]],
-    ]
-
-
-# ---------------------------------------------------------------------------
-# main drawing class
-# ---------------------------------------------------------------------------
+SHAPE_NAMES = {
+    SQUARE: "square",
+    CIRCLE: "circle",
+    HEXAGON: "hexagon",
+}
 
 
 class DrawUncrowding(DrawStimuli):
-    """draws uncrowding stimuli with verniers and flanking shapes."""
+    """draws uncrowding stimuli with verniers and shape flanker grids."""
 
-    def __init__(self, bar_width, *args, **kwargs):
-        self.bar_width = bar_width
-        self.offset_height = 1
+    def __init__(self, bar_width=2, bar_height=10, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.shape_size = None
+        self.bar_width = bar_width
+        self.bar_height = bar_height
 
-    def draw_square(self):
-        """draw a square shape patch."""
-        resize_factor = 1.2
-        patch = np.array(
-            self.create_canvas(
-                size=(self.shape_size, self.shape_size), background=self.background
-            )
+    def draw_square(self, shape_size: int) -> Image.Image:
+        """draw a square outline patch."""
+        patch = Image.new("RGB", (shape_size, shape_size), self.background)
+        draw = ImageDraw.Draw(patch)
+        margin = max(1, self.bar_width)
+        draw.rectangle(
+            [margin, margin, shape_size - 1 - margin, shape_size - 1 - margin],
+            outline=self.line_col,
+            width=self.bar_width,
         )
-
-        first_row = int((self.shape_size - self.shape_size / resize_factor) / 2)
-        first_col = first_row
-        side_size = int(self.shape_size / resize_factor)
-
-        patch[
-            first_row : first_row + self.bar_width,
-            first_col : first_col + side_size + self.bar_width,
-        ] = self.fill[:3]
-        patch[
-            first_row + side_size : first_row + self.bar_width + side_size,
-            first_col : first_col + side_size + self.bar_width,
-        ] = self.fill[:3]
-        patch[
-            first_row : first_row + side_size + self.bar_width,
-            first_col : first_col + self.bar_width,
-        ] = self.fill[:3]
-        patch[
-            first_row : first_row + side_size + self.bar_width,
-            first_row + side_size : first_row + self.bar_width + side_size,
-        ] = self.fill[:3]
-
         return patch
 
-    def draw_circle(self):
-        """draw a circle shape patch."""
-        resizeFactor = 1.01
-        radius = self.shape_size / (2 * resizeFactor) - 1
-        patch = np.array(
-            self.create_canvas(
-                size=(self.shape_size, self.shape_size), background=self.background
-            )
+    def draw_circle(self, shape_size: int) -> Image.Image:
+        """draw a circle outline patch."""
+        patch = Image.new("RGB", (shape_size, shape_size), self.background)
+        draw = ImageDraw.Draw(patch)
+        margin = max(1, self.bar_width)
+        draw.ellipse(
+            [margin, margin, shape_size - 1 - margin, shape_size - 1 - margin],
+            outline=self.line_col,
+            width=self.bar_width,
         )
-        center = (int(self.shape_size / 2), int(self.shape_size / 2))
-        rr, cc = circle_perimeter(*center, int(radius))
-        patch[rr, cc] = self.fill[:3]
         return patch
 
-    def draw_diamond(self):
-        """draw a diamond shape patch."""
-        S = self.shape_size
-        mid = int(S / 2)
-        patch = np.array(self.create_canvas(size=(S, S), background=self.background))
-        for i in range(S):
-            for j in range(S):
-                if i == mid + j or i == mid - j or j == mid + i or j == 3 * mid - i - 1:
-                    patch[i, j] = self.fill[:3]
-        return patch
+    def draw_hexagon(self, shape_size: int) -> Image.Image:
+        """draw a regular hexagon outline patch with a flat top face pointing up."""
+        patch = Image.new("RGB", (shape_size, shape_size), self.background)
+        draw = ImageDraw.Draw(patch)
+        center_x = shape_size / 2.0
+        center_y = shape_size / 2.0
+        radius = (shape_size / 2.0) - max(1, self.bar_width)
 
-    def draw_noise(self):
-        """draw a noise patch."""
-        S = self.shape_size
-        return np.random.normal(0, 0.1, size=(S // 3, S // 3))
+        # Angles for a flat top face: k * pi / 3 for k = 0..5
+        # k=1 (60 deg) and k=2 (120 deg) give top-right and top-left vertices with equal y coordinates.
+        vertices = []
+        for k in range(6):
+            angle = k * math.pi / 3.0
+            x = center_x + radius * math.cos(angle)
+            y = center_y - radius * math.sin(angle)
+            vertices.append((x, y))
 
-    def draw_polygon(self, nSides, phi):
-        """draw a regular polygon shape patch."""
-        patch = np.array(
-            self.create_canvas(
-                size=(self.shape_size, self.shape_size), background=self.background
-            )
-        )
-        center = (self.shape_size // 2, self.shape_size // 2)
-        radius = self.shape_size / (2 * 1.0) - 1
-
-        rowExtVertices = []
-        colExtVertices = []
-        for n in range(nSides):
-            rowExtVertices.append(
-                radius * np.sin(2 * np.pi * n / nSides + phi) + center[0]
-            )
-            colExtVertices.append(
-                radius * np.cos(2 * np.pi * n / nSides + phi) + center[1]
-            )
-
-        RR, CC = polygon_perimeter(rowExtVertices, colExtVertices)
-        patch[RR, CC] = self.fill[:3]
-        return patch
-
-    def draw_star(self, nTips, ratio, phi):
-        """draw a star shape patch."""
-        resizeFactor = 0.8
-        patch = np.array(
-            self.create_canvas(
-                size=(self.shape_size, self.shape_size), background=self.background
-            )
-        )
-        center = (int(self.shape_size / 2), int(self.shape_size / 2))
-        radius = self.shape_size / (2 * resizeFactor)
-
-        row_ext_vertices = []
-        col_ext_vertices = []
-        row_int_vertices = []
-        col_int_vertices = []
-        for n in range(2 * nTips):
-            this_radius = radius
-            if not n % 2:
-                this_radius = radius / ratio
-
-            row_ext_vertices.append(
-                max(
-                    min(
-                        this_radius * np.sin(2 * np.pi * n / (2 * nTips) + phi)
-                        + center[0],
-                        self.shape_size,
-                    ),
-                    0.0,
-                )
-            )
-            col_ext_vertices.append(
-                max(
-                    min(
-                        this_radius * np.cos(2 * np.pi * n / (2 * nTips) + phi)
-                        + center[1],
-                        self.shape_size,
-                    ),
-                    0.0,
-                )
-            )
-            row_int_vertices.append(
-                max(
-                    min(
-                        (this_radius - self.bar_width)
-                        * np.sin(2 * np.pi * n / (2 * nTips) + phi)
-                        + center[0],
-                        self.shape_size,
-                    ),
-                    0.0,
-                )
-            )
-            col_int_vertices.append(
-                max(
-                    min(
-                        (this_radius - self.bar_width)
-                        * np.cos(2 * np.pi * n / (2 * nTips) + phi)
-                        + center[1],
-                        self.shape_size,
-                    ),
-                    0.0,
-                )
-            )
-
-        RR, CC = polygon(row_ext_vertices, col_ext_vertices)
-        rr, cc = polygon(row_int_vertices, col_int_vertices)
-        patch[RR, CC] = self.fill[:3]
-        patch[rr, cc] = self.background
+        for i in range(6):
+            p1 = vertices[i]
+            p2 = vertices[(i + 1) % 6]
+            draw.line([p1, p2], fill=self.line_col, width=self.bar_width)
 
         return patch
 
-    def draw_irreg(self, n_sides_rough, repeat_shape):
-        """draw an irregular polygon shape patch."""
-        if repeat_shape:
-            random.seed(1)
-
-        patch = np.array(
-            self.create_canvas(
-                size=(self.shape_size, self.shape_size), background=self.background
-            )
-        )
-        center = (int(self.shape_size / 2), int(self.shape_size / 2))
-        angle = 0
-
-        row_ext_vertices = []
-        col_ext_vertices = []
-        row_int_vertices = []
-        col_int_vertices = []
-        while angle < 2 * np.pi:
-            if (
-                np.pi / 4 < angle < 3 * np.pi / 4
-                or 5 * np.pi / 4 < angle < 7 * np.pi / 4
-            ):
-                radius = (random.random() + 2.0) / 3.0 * self.shape_size / 2
-            else:
-                radius = (random.random() + 1.0) / 2.0 * self.shape_size / 2
-
-            row_ext_vertices.append(radius * np.sin(angle) + center[0])
-            col_ext_vertices.append(radius * np.cos(angle) + center[1])
-            row_int_vertices.append(
-                (radius - self.bar_width) * np.sin(angle) + center[0]
-            )
-            col_int_vertices.append(
-                (radius - self.bar_width) * np.cos(angle) + center[1]
-            )
-
-            angle += (random.random() + 0.5) * (2 * np.pi / n_sides_rough)
-
-        RR, CC = polygon(row_ext_vertices, col_ext_vertices)
-        rr, cc = polygon(row_int_vertices, col_int_vertices)
-        patch[RR, CC] = self.fill[:3]
-        patch[rr, cc] = self.background
-
-        if repeat_shape:
-            random.seed(datetime.now())
-
-        return patch
-
-    def draw_stuff(self, nLines):
-        """draw random lines on a patch."""
-        patch = np.array(self.create_canvas(size=(self.shape_size, self.shape_size)))
-
-        for n in range(nLines):
-            r1, c1, r2, c2 = np.random.randint(self.shape_size, size=4)
-            rr, cc = line(r1, c1, r2, c2)
-            patch[rr, cc] = self.fill[:3]
-
-        return patch
-
-    def draw_vernier_in_patch(
-        self, full_patch: np.array = None, offset=None, offset_size=None
-    ):
-        """draw a vernier stimulus within a shape patch."""
-        if offset_size is None:
-            offset_size = random.randint(1, int(self.bar_height / 2.0))
-
-        patch = np.array(
-            self.create_canvas(
-                size=(
-                    2 * self.bar_width + offset_size,
-                    2 * self.bar_height + self.offset_height,
-                ),
-                background=self.background,
-            )
-        )
-        patch[0 : self.bar_height, 0 : self.bar_width, :] = self.fill[:3]
-        patch[
-            self.bar_height + self.offset_height :, self.bar_width + offset_size :, :
-        ] = self.fill[:3]
-
-        if offset is None:
-            if random.randint(0, 1):
-                patch = np.fliplr(patch)
-        elif offset == 1:
-            patch = np.fliplr(patch)
-        if full_patch is None:
-            full_patch = np.array(
-                self.create_canvas(
-                    size=(self.shape_size, self.shape_size), background=self.background
-                )
-            )
-        first_row = int((self.shape_size - patch.shape[0]) / 2)
-        first_col = int((self.shape_size - patch.shape[1]) / 2)
-        full_patch[
-            first_row : first_row + patch.shape[0],
-            first_col : first_col + patch.shape[1],
-        ] = patch
-
-        return full_patch
-
-    def draw_shape(self, shapeID, offset=None, offset_size=None):
-        """draw a shape by id (0=empty, 1=square, 2=circle, etc.)."""
-        if shapeID == 0:
-            patch = self.create_canvas(
-                size=(self.shape_size, self.shape_size), background=self.background
-            )
-        if shapeID == 1:
-            patch = self.draw_square()
-        if shapeID == 2:
-            patch = self.draw_circle()
-        if shapeID == 3:
-            patch = self.draw_polygon(6, 0)
-        if shapeID == 4:
-            patch = self.draw_polygon(8, np.pi / 8)
-        if shapeID == 5:
-            patch = self.draw_diamond()
-        if shapeID == 6:
-            patch = self.draw_star(7, 1.7, -np.pi / 14)
-        if shapeID == 7:
-            patch = self.draw_irreg(15, False)
-        if shapeID == 8:
-            patch = self.draw_irreg(15, True)
-        if shapeID == 9:
-            patch = self.draw_stuff(5)
-        if shapeID == 10:
-            patch = self.draw_noise()
-
-        return patch
-
-    def draw_stim(
-        self,
-        vernier_ext,
-        shape_matrix,
-        shape_size,
-        vernier_in=False,
-        offset=None,
-        offset_size=None,
-        fixed_position=None,
-        noise_patch=None,
-    ):
-        """draw a complete uncrowding stimulus with vernier and flankers."""
-        self.shape_size = shape_size
-        self.bar_height = int(shape_size / 4 - self.bar_width / 4)
-
-        if shape_matrix is None:
-            ID = np.random.randint(1, 7)
-            siz = np.random.randint(4) * 2 + 1
-            h = np.random.randint(2) * 2 + 1
-            shape_matrix = np.zeros((h, siz)) + ID
-
-        image = np.array(self.create_canvas())
-        padDist = int(self.shape_size / 6)
-        shape_matrix = np.array(shape_matrix)
-
-        if len(shape_matrix.shape) < 2:
-            shape_matrix = np.expand_dims(shape_matrix, axis=0)
-
-        if shape_matrix.size == 0:
-            patch = np.array(
-                self.create_canvas(
-                    size=(self.shape_size, self.shape_size), background=self.background
-                )
-            )
+    def draw_shape(self, shape_id: int, shape_size: int) -> Image.Image:
+        """draw a flanker shape patch by ID."""
+        if shape_id == SQUARE:
+            return self.draw_square(shape_size)
+        elif shape_id == CIRCLE:
+            return self.draw_circle(shape_size)
+        elif shape_id == HEXAGON:
+            return self.draw_hexagon(shape_size)
         else:
-            patch = np.array(
-                self.create_canvas(
-                    size=(
-                        shape_matrix.shape[1] * self.shape_size
-                        + (shape_matrix.shape[1] - 1) * 0
-                        + 1,
-                        shape_matrix.shape[0] * self.shape_size
-                        + (shape_matrix.shape[0] - 1) * 0
-                        + 1,
-                    ),
-                    background=self.background,
-                )
-            )
+            return Image.new("RGB", (shape_size, shape_size), self.background)
 
-            for row in range(shape_matrix.shape[0]):
-                for col in range(shape_matrix.shape[1]):
-                    first_row = row * self.shape_size
-                    first_col = col * self.shape_size
-                    patch[
-                        first_row : first_row + self.shape_size,
-                        first_col : first_col + self.shape_size,
-                    ] = self.draw_shape(shape_matrix[row, col], offset, offset_size)
+    def draw_vernier(
+        self, vernier_type: int, offset_pixels: int
+    ) -> Image.Image:
+        """
+        draw a Vernier stimulus patch.
 
-        if vernier_in:
-            first_row = int((patch.shape[0] - self.shape_size) / 2)
-            first_col = int((patch.shape[1] - self.shape_size) / 2)
-            target_patch = patch[
-                first_row : (first_row + self.shape_size),
-                first_col : first_col + self.shape_size,
-            ]
-            patch[
-                first_row : (first_row + self.shape_size),
-                first_col : first_col + self.shape_size,
-            ] = self.draw_vernier_in_patch(target_patch, offset, offset_size)
+        vernier_type = 0: top line shifted to the right.
+        vernier_type = 1: top line shifted to the left.
+        """
+        bar_h = self.bar_height
+        patch_w = self.bar_width * 2 + offset_pixels + 6
+        patch_h = bar_h * 2 + 4
+        patch = Image.new("RGB", (patch_w, patch_h), self.background)
+        draw = ImageDraw.Draw(patch)
 
-        if fixed_position is None:
-            first_row = random.randint(
-                padDist, self.canvas_size[0] - (patch.shape[0] + padDist)
-            )
-            first_col = random.randint(
-                padDist, self.canvas_size[1] - (patch.shape[1] + padDist)
-            )
+        center_x = patch_w // 2
+
+        if vernier_type == 0:
+            # Top line to right, bottom line to left
+            x_top = center_x + math.ceil(offset_pixels / 2.0)
+            x_bottom = center_x - math.floor(offset_pixels / 2.0)
         else:
-            n_elements = [
-                max(shape_matrix.shape[0], 1),
-                max(shape_matrix.shape[1], 1),
-            ]
-            first_row = fixed_position[0] - int(
-                self.shape_size * (n_elements[0] - 1) / 2
-            )
-            first_col = fixed_position[1] - int(
-                self.shape_size * (n_elements[1] - 1) / 2
-            )
+            # Top line to left, bottom line to right
+            x_top = center_x - math.floor(offset_pixels / 2.0)
+            x_bottom = center_x + math.ceil(offset_pixels / 2.0)
 
-        image[
-            first_row : first_row + patch.shape[0],
-            first_col : first_col + patch.shape[1],
-        ] = patch
+        y_top_start = 2
+        y_top_end = y_top_start + bar_h
+        y_bottom_start = y_top_end
+        y_bottom_end = y_bottom_start + bar_h
 
-        min_distance = 0
+        draw.line(
+            [(x_top, y_top_start), (x_top, y_top_end - 1)],
+            fill=self.line_col,
+            width=self.bar_width,
+        )
+        draw.line(
+            [(x_bottom, y_bottom_start), (x_bottom, y_bottom_end - 1)],
+            fill=self.line_col,
+            width=self.bar_width,
+        )
 
-        if vernier_ext:
-            ver_size = self.shape_size
-            ver_patch = self.draw_vernier_in_patch(None, offset, offset_size)
-            x = first_row
-            y = first_col
-
-            flag = 0
-            while (
-                x + ver_size + min_distance >= first_row
-                and x <= min_distance + first_row + patch.shape[0]
-                and y + ver_size >= first_col
-                and y <= first_col + patch.shape[1]
-            ):
-                x = np.random.randint(
-                    padDist, self.canvas_size[0] - (ver_size + padDist)
-                )
-                y = np.random.randint(
-                    padDist, self.canvas_size[1] - (ver_size + padDist)
-                )
-                flag += 1
-                if flag > 15:
-                    print("problem in finding space for the extra vernier")
-
-            image[x : x + ver_size, y : y + ver_size] = ver_patch
-
-        if noise_patch is not None:
-            image[
-                noise_patch[0] : noise_patch[0] + self.shape_size // 2,
-                noise_patch[1] : noise_patch[1] + self.shape_size // 2,
-            ] = self.draw_noise()
-        img = Image.fromarray(image).convert("RGBA")
-        img = apply_antialiasing(img) if self.antialiasing else img
-        return img
+        return patch
 
 
-# ---------------------------------------------------------------------------
-# generator config and entry point
-# ---------------------------------------------------------------------------
+def get_all_grid_structures(max_cols: int = 7):
+    """
+    generate all unique grid arrangements according to rules:
+    - Max 3 rows (1 or 3 rows, centered).
+    - Center row has odd number of columns <= max_cols.
+    - If 3 rows, top & bottom rows have equal odd number of columns <= center row columns.
+    - Added top and bottom rows share the exact same structure (horizontal axis symmetry).
+    - Max 2 distinct shapes in the image.
+    - Each row can be uniform (all same shape) or alternating (between 2 shapes).
+
+    Returns:
+        List[Tuple[List[List[int]], str]]: List of (grid_rows, pattern_str) pairs.
+    """
+    all_shapes = [SQUARE, CIRCLE, HEXAGON]
+    shape_subsets = []
+    for s in all_shapes:
+        shape_subsets.append([s])
+    for i in range(len(all_shapes)):
+        for j in range(i + 1, len(all_shapes)):
+            shape_subsets.append([all_shapes[i], all_shapes[j]])
+
+    def get_row_patterns(length: int, shapes: list[int]):
+        patterns = []
+        if len(shapes) == 1:
+            patterns.append([shapes[0]] * length)
+        else:
+            s1, s2 = shapes[0], shapes[1]
+            patterns.append([s1] * length)
+            patterns.append([s2] * length)
+            if length >= 2:
+                patterns.append([s1 if k % 2 == 0 else s2 for k in range(length)])
+                patterns.append([s2 if k % 2 == 0 else s1 for k in range(length)])
+        return patterns
+
+    arrangements = []
+    seen_patterns = set()
+    odd_cols = [c for c in range(1, max_cols + 1, 2)]
+
+    for shapes in shape_subsets:
+        for c_center in odd_cols:
+            center_patterns = get_row_patterns(c_center, shapes)
+
+            # 1-row grids
+            for p_center in center_patterns:
+                grid = [p_center]
+                pat_str = f"{len(p_center)}:" + ",".join(str(x) for x in p_center)
+                if pat_str not in seen_patterns:
+                    seen_patterns.add(pat_str)
+                    arrangements.append((grid, pat_str))
+
+            # 3-row grids
+            flanker_cols = [c for c in odd_cols if c <= c_center]
+            for c_flanker in flanker_cols:
+                flanker_patterns = get_row_patterns(c_flanker, shapes)
+                for p_center in center_patterns:
+                    for p_flanker in flanker_patterns:
+                        grid = [p_flanker, p_center, p_flanker]
+                        parts = [
+                            f"{len(p_flanker)}:" + ",".join(str(x) for x in p_flanker),
+                            f"{len(p_center)}:" + ",".join(str(x) for x in p_center),
+                            f"{len(p_flanker)}:" + ",".join(str(x) for x in p_flanker),
+                        ]
+                        pat_str = ";".join(parts)
+                        if pat_str not in seen_patterns:
+                            seen_patterns.add(pat_str)
+                            arrangements.append((grid, pat_str))
+
+    return arrangements
+
+
+def generate_uncrowding_stimulus(
+    drawer: DrawUncrowding,
+    grid_rows: list,
+    vernier_type: int,
+    vernier_offset: int,
+    vernier_in_out: str,
+    shape_size: int,
+    canvas_size: tuple[int, int],
+) -> Image.Image:
+    """generate a complete uncrowding image with flanker grid and Vernier."""
+    canvas = drawer.create_canvas()
+
+    num_rows = len(grid_rows)
+    max_cols = max(len(r) for r in grid_rows)
+
+    grid_width = max_cols * shape_size
+    grid_height = num_rows * shape_size
+
+    canvas_w, canvas_h = canvas_size
+    grid_x0 = (canvas_w - grid_width) // 2
+    grid_y0 = (canvas_h - grid_height) // 2
+
+    for r_idx, row_pattern in enumerate(grid_rows):
+        row_len = len(row_pattern)
+        row_width = row_len * shape_size
+        row_x0 = (canvas_w - row_width) // 2
+        row_y0 = grid_y0 + r_idx * shape_size
+
+        for c_idx, shape_id in enumerate(row_pattern):
+            shape_patch = drawer.draw_shape(shape_id, shape_size)
+            px = row_x0 + c_idx * shape_size
+            py = row_y0
+            canvas.paste(shape_patch, (px, py))
+
+    vernier_patch = drawer.draw_vernier(vernier_type, vernier_offset)
+    vw, vh = vernier_patch.size
+
+    grid_bbox = (
+        grid_x0,
+        grid_y0,
+        grid_x0 + grid_width,
+        grid_y0 + grid_height,
+    )
+
+    if vernier_in_out == "inside":
+        center_row_idx = num_rows // 2
+        center_row_len = len(grid_rows[center_row_idx])
+        center_col_idx = center_row_len // 2
+
+        center_row_width = center_row_len * shape_size
+        center_row_x0 = (canvas_w - center_row_width) // 2
+        center_row_y0 = grid_y0 + center_row_idx * shape_size
+
+        center_x = center_row_x0 + center_col_idx * shape_size + shape_size // 2
+        center_y = center_row_y0 + shape_size // 2
+
+        vx = center_x - vw // 2
+        vy = center_y - vh // 2
+
+        # Blend Vernier onto central flanker
+        canvas.paste(vernier_patch, (vx, vy), mask=vernier_patch.convert("L"))
+    else:
+        # Outside condition: sample position outside grid bounding box with clear margin
+        safety_margin = 10
+        min_x, min_y = safety_margin, safety_margin
+        max_x = canvas_w - vw - safety_margin
+        max_y = canvas_h - vh - safety_margin
+
+        # Expanded grid bounding box including safety margin
+        gx1 = grid_x0 - safety_margin
+        gy1 = grid_y0 - safety_margin
+        gx2 = grid_x0 + grid_width + safety_margin
+        gy2 = grid_y0 + grid_height + safety_margin
+
+        valid_position = False
+        attempts = 0
+
+        while not valid_position and attempts < 300:
+            attempts += 1
+            cand_x = random.randint(min_x, max(min_x, max_x))
+            cand_y = random.randint(min_y, max(min_y, max_y))
+
+            vx1, vy1 = cand_x, cand_y
+            vx2, vy2 = cand_x + vw, cand_y + vh
+
+            # Check for overlap with expanded grid bounding box
+            overlap = not (vx2 < gx1 or vx1 > gx2 or vy2 < gy1 or vy1 > gy2)
+            if not overlap:
+                valid_position = True
+                vx, vy = cand_x, cand_y
+
+        if not valid_position:
+            # Fallback to top margin above grid
+            vx = max(min_x, (canvas_w - vw) // 2)
+            vy = max(min_y, gy1 - vh)
+
+        canvas.paste(vernier_patch, (vx, vy), mask=vernier_patch.convert("L"))
+
+    img = canvas.convert("RGBA")
+    if drawer.antialiasing:
+        img = apply_antialiasing(img)
+    return img
 
 
 @dataclass
 class UncrowdingConfig(GeneratorConfig):
     """config for uncrowding dataset."""
 
-    num_samples_vernier_inside: int = field(
-        default=100,
+    num_samples_vernier_inside: int | None = field(
+        default=None,
         metadata={
-            "min": 1,
-            "max": 10000,
-            "step": 10,
-            "label": "vernier inside samples",
+            "label": "vernier inside samples (None for all arrangements)",
         },
     )
-    num_samples_vernier_outside: int = field(
-        default=100,
+    num_samples_vernier_outside: int | None = field(
+        default=None,
         metadata={
-            "min": 1,
-            "max": 10000,
-            "step": 10,
-            "label": "vernier outside samples",
+            "label": "vernier outside samples (None for all arrangements)",
         },
     )
-    random_size: bool = field(default=True, metadata={"label": "random shape size"})
+    vernier_offset: int = field(
+        default=2,
+        metadata={
+            "min": 2,
+            "max": 20,
+            "label": "vernier horizontal offset/separation (px)",
+        },
+    )
+    bar_width: int = field(
+        default=2,
+        metadata={"min": 1, "max": 10, "label": "vernier & stroke width"},
+    )
+    bar_height: int = field(
+        default=10,
+        metadata={"min": 2, "max": 30, "label": "vernier bar height (px)"},
+    )
+    max_cols: int = field(
+        default=5,
+        metadata={"min": 1, "max": 15, "step": 2, "label": "max grid columns"},
+    )
+    shape_size: int = field(
+        default=32,
+        metadata={"min": 32, "max": 128, "label": "flanker shape size (px)"},
+    )
     antialiasing: bool = field(default=False, metadata={"label": "antialiasing"})
     output_folder: str = field(
-        default="data/low_mid_level_vision/un_crowding",
+        default="data/low_mid_vision/un_crowding",
         metadata={"label": "output folder"},
     )
 
@@ -585,18 +368,20 @@ def generate_all(config: UncrowdingConfig):
     vernier_in_out = ["outside", "inside"]
     vernier_type = [0, 1]
 
-    for v in vernier_in_out:
-        for c in vernier_type:
-            (output_folder / v / str(c)).mkdir(exist_ok=True, parents=True)
+    for v_mode in vernier_in_out:
+        for v_type in vernier_type:
+            (output_folder / v_mode / str(v_type)).mkdir(exist_ok=True, parents=True)
 
-    ds = DrawUncrowding(
+    drawer = DrawUncrowding(
         canvas_size=config.canvas_size,
-        background=config.background_color,
+        background=(0, 0, 0),
+        line_col=(255, 255, 255),
         antialiasing=config.antialiasing,
-        bar_width=1,
+        bar_width=config.bar_width,
+        bar_height=config.bar_height,
     )
 
-    t = all_test_shapes()
+    all_arrangements = get_all_grid_structures(max_cols=config.max_cols)
 
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
         writer = csv.writer(annfile)
@@ -605,76 +390,54 @@ def generate_all(config: UncrowdingConfig):
                 "Path",
                 "VernierInOut",
                 "VernierType",
+                "VernierOffset",
+                "GridPattern",
                 "BackgroundColor",
-                "ShapeCode",
                 "ShapeSize",
                 "IterNum",
             ]
         )
 
-        for v_in_out in tqdm(vernier_in_out):
+        for v_mode in tqdm(vernier_in_out, desc="Mode"):
             num_requested = (
                 config.num_samples_vernier_outside
-                if v_in_out == "outside"
+                if v_mode == "outside"
                 else config.num_samples_vernier_inside
             )
-            samples_per_cond = num_requested // len(t)
-            if samples_per_cond == 0:
-                print(
-                    f"in order to have at least one sample per condition, the total number of sample has been increased to {len(t)}"
-                )
-                samples_per_cond = 1
-            if samples_per_cond * len(t) != num_requested:
-                print(
-                    f"you specified {num_requested} for {v_in_out} but to keep the number of sample per subcategory equal, {samples_per_cond * len(t)} samples will be generated ({len(t)} categories, {samples_per_cond} samples per category)"
-                )
 
-            for v in vernier_type:
-                for s in tqdm(t, leave=False):
-                    for n in range(samples_per_cond):
-                        shape_size = (
-                            random.randint(
-                                int(config.canvas_size[0] * 0.1),
-                                config.canvas_size[0] // 7,
-                            )
-                            if config.random_size
-                            else config.canvas_size[0] * 0.08
-                        )
-                        shape_size -= int(shape_size / 6)
+            if num_requested is not None and num_requested < len(all_arrangements):
+                mode_arrangements = random.sample(all_arrangements, k=num_requested)
+            else:
+                mode_arrangements = list(all_arrangements)
 
-                        img = ds.draw_stim(
-                            vernier_ext=v_in_out == "outside",
-                            shape_matrix=s,
-                            shape_size=shape_size,
-                            vernier_in=v_in_out == "inside",
-                            fixed_position=None,
-                            offset=v,
-                            offset_size=None,
-                            noise_patch=None,
-                        )
-                        strs = str(s).replace("], ", "nl")
-                        shape_code = "".join(
-                            i for i in strs if i not in [",", "[", "]", " "]
-                        )
-                        shape_code = shape_code if shape_code != "" else "none"
+            for v_type in vernier_type:
+                for n, (grid_rows, pattern_str) in enumerate(mode_arrangements):
+                    img = generate_uncrowding_stimulus(
+                        drawer=drawer,
+                        grid_rows=grid_rows,
+                        vernier_type=v_type,
+                        vernier_offset=config.vernier_offset,
+                        vernier_in_out=v_mode,
+                        shape_size=config.shape_size,
+                        canvas_size=config.canvas_size,
+                    )
 
-                        unique_hex = uuid.uuid4().hex[:8]
-                        path = (
-                            Path(v_in_out)
-                            / str(v)
-                            / f"{shape_code}_{n}_{unique_hex}.png"
-                        )
-                        img.save(output_folder / path)
-                        writer.writerow(
-                            [
-                                path,
-                                v_in_out,
-                                v,
-                                ds.background,
-                                shape_code,
-                                shape_size,
-                                n,
-                            ]
-                        )
+                    unique_hex = uuid.uuid4().hex[:8]
+                    file_name = f"{v_mode}_v{v_type}_offset{config.vernier_offset}_{n}_{unique_hex}.png"
+                    rel_path = Path(v_mode) / str(v_type) / file_name
+
+                    img.save(output_folder / rel_path)
+                    writer.writerow(
+                        [
+                            rel_path,
+                            v_mode,
+                            v_type,
+                            config.vernier_offset,
+                            pattern_str,
+                            drawer.background,
+                            config.shape_size,
+                            n,
+                        ]
+                    )
 
     return str(output_folder)
