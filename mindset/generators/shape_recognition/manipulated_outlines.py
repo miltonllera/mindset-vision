@@ -1,6 +1,9 @@
+"""manipulated outlines dataset generator using Shapely and PyCairo."""
+
 import csv
 import itertools
 import math
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,7 +17,7 @@ from mindset.utils import to_list
 
 
 class DrawManipulatedOutline(BaseDrawManipulatedObject):
-    """Draws object outline manipulations using PyCairo and Shapely."""
+    """draws object outline manipulations using PyCairo and Shapely."""
 
     def __init__(
         self,
@@ -25,6 +28,8 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
         outline_asset_image="",
         outline_text="A",
         outline_font="Sans",
+        random_modes=None,
+        seed=None,
         rotate_outline_shapes=False,
         fill_interior=True,
         interior_color=(255, 255, 255),
@@ -43,6 +48,14 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
         self.rotate_outline_shapes = rotate_outline_shapes
         self.fill_interior = fill_interior
         self.interior_color = interior_color
+        self.seed = seed
+
+        if random_modes is None:
+            self.random_modes = ["dotted", "oriented_lines", "oriented_shapes", "text"]
+            if self.outline_asset_image:
+                self.random_modes.append("asset_shape")
+        else:
+            self.random_modes = list(random_modes)
 
     def _render_interior(self, ctx, outer_polygons):
         """fill interior silhouette with solid interior color if enabled."""
@@ -59,6 +72,64 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
             ctx.fill()
 
         ctx.restore()
+
+    def _render_element(self, ctx, p1, angle, mode_type, asset_contour=None):
+        """render a single vector outline element at position p1."""
+        stamp_sz = max(1.0, self.outline_scale)
+        half_sz = stamp_sz / 2.0
+
+        if mode_type == "dotted":
+            radius = max(0.5, stamp_sz / 2.0)
+            ctx.arc(p1.x, p1.y, radius, 0, 2 * math.pi)
+            ctx.fill()
+
+        elif mode_type == "oriented_lines":
+            ctx.set_line_width(max(0.5, stamp_sz / 3.0))
+            x1 = p1.x - half_sz * math.cos(angle)
+            y1 = p1.y - half_sz * math.sin(angle)
+            x2 = p1.x + half_sz * math.cos(angle)
+            y2 = p1.y + half_sz * math.sin(angle)
+            ctx.move_to(x1, y1)
+            ctx.line_to(x2, y2)
+            ctx.stroke()
+
+        elif mode_type == "oriented_shapes":
+            ctx.save()
+            ctx.translate(p1.x, p1.y)
+            if angle != 0:
+                ctx.rotate(angle)
+            ctx.rectangle(-half_sz, -half_sz, stamp_sz, stamp_sz)
+            ctx.fill()
+            ctx.restore()
+
+        elif mode_type == "asset_shape":
+            if asset_contour is not None:
+                ctx.save()
+                ctx.translate(p1.x, p1.y)
+                if angle != 0:
+                    ctx.rotate(angle)
+                ctx.scale(stamp_sz, stamp_sz)
+                ctx.move_to(asset_contour[0, 0], asset_contour[0, 1])
+                for pt in asset_contour[1:]:
+                    ctx.line_to(pt[0], pt[1])
+                ctx.close_path()
+                ctx.fill()
+                ctx.restore()
+
+        elif mode_type == "text" or mode_type == "letters":
+            ctx.select_font_face(
+                self.outline_font, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD
+            )
+            text_sz = max(4.0, stamp_sz)
+            ctx.set_font_size(text_sz)
+            ctx.save()
+            ctx.translate(p1.x, p1.y)
+            if angle != 0:
+                ctx.rotate(angle)
+            ctx.move_to(-text_sz / 4.0, text_sz / 3.0)
+            ctx.text_path(self.outline_text)
+            ctx.fill()
+            ctx.restore()
 
     def _render_outline(self, ctx, linestrings):
         """render vector outline along Shapely LineStrings with subpixel precision."""
@@ -84,116 +155,10 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
                 ctx.stroke()
             ctx.set_dash([])
 
-        elif self.outline_mode == "dotted":
+        elif self.outline_mode == "random":
             step = max(1.0, self.outline_distance)
-            radius = max(0.5, self.outline_scale / 2.0)
-
-            for ls in linestrings:
-                length = ls.length
-                if length <= 0:
-                    continue
-                num_dots = int(math.floor(length / step))
-                for i in range(num_dots):
-                    d = i * step
-                    p = ls.interpolate(d)
-                    ctx.arc(p.x, p.y, radius, 0, 2 * math.pi)
-                    ctx.fill()
-
-        elif self.outline_mode == "oriented_lines":
-            step = max(1.0, self.outline_distance)
-            half_len = max(1.0, self.outline_scale / 2.0)
-            ctx.set_line_width(max(0.5, self.outline_scale / 3.0))
-
-            for ls in linestrings:
-                length = ls.length
-                if length <= 0:
-                    continue
-                num_samples = int(math.floor(length / step))
-                for i in range(num_samples):
-                    d = i * step
-                    p1 = ls.interpolate(d)
-                    p2 = ls.interpolate(min(d + 1.0, length))
-
-                    dx = p2.x - p1.x
-                    dy = p2.y - p1.y
-                    angle = math.atan2(dy, dx) if self.rotate_outline_shapes else 0.0
-
-                    x1 = p1.x - half_len * math.cos(angle)
-                    y1 = p1.y - half_len * math.sin(angle)
-                    x2 = p1.x + half_len * math.cos(angle)
-                    y2 = p1.y + half_len * math.sin(angle)
-
-                    ctx.move_to(x1, y1)
-                    ctx.line_to(x2, y2)
-                    ctx.stroke()
-
-        elif self.outline_mode == "oriented_shapes":
-            step = max(1.0, self.outline_distance)
-            half_sz = max(1.0, self.outline_scale / 2.0)
-
-            for ls in linestrings:
-                length = ls.length
-                if length <= 0:
-                    continue
-                num_samples = int(math.floor(length / step))
-                for i in range(num_samples):
-                    d = i * step
-                    p1 = ls.interpolate(d)
-                    p2 = ls.interpolate(min(d + 1.0, length))
-
-                    dx = p2.x - p1.x
-                    dy = p2.y - p1.y
-                    angle = math.atan2(dy, dx) if self.rotate_outline_shapes else 0.0
-
-                    ctx.save()
-                    ctx.translate(p1.x, p1.y)
-                    if angle != 0:
-                        ctx.rotate(angle)
-                    ctx.rectangle(-half_sz, -half_sz, self.outline_scale, self.outline_scale)
-                    ctx.fill()
-                    ctx.restore()
-
-        elif self.outline_mode == "asset_shape":
+            rng = random.Random(self.seed) if self.seed is not None else random
             asset_contour = self.load_asset_vector_contour(self.outline_asset_image)
-            if asset_contour is not None:
-                step = max(1.0, self.outline_distance)
-                stamp_sz = max(1.0, self.outline_scale)
-
-                for ls in linestrings:
-                    length = ls.length
-                    if length <= 0:
-                        continue
-                    num_samples = int(math.floor(length / step))
-                    for i in range(num_samples):
-                        d = i * step
-                        p1 = ls.interpolate(d)
-                        p2 = ls.interpolate(min(d + 1.0, length))
-
-                        dx = p2.x - p1.x
-                        dy = p2.y - p1.y
-                        angle = math.atan2(dy, dx) if self.rotate_outline_shapes else 0.0
-
-                        ctx.save()
-                        ctx.translate(p1.x, p1.y)
-                        if angle != 0:
-                            ctx.rotate(angle)
-                        ctx.scale(stamp_sz, stamp_sz)
-
-                        ctx.move_to(asset_contour[0, 0], asset_contour[0, 1])
-                        for pt in asset_contour[1:]:
-                            ctx.line_to(pt[0], pt[1])
-                        ctx.close_path()
-                        ctx.fill()
-                        ctx.restore()
-
-        elif self.outline_mode == "text" or self.outline_mode == "letters":
-            step = max(1.0, self.outline_distance)
-            stamp_sz = max(4.0, self.outline_scale)
-
-            ctx.select_font_face(
-                self.outline_font, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD
-            )
-            ctx.set_font_size(stamp_sz)
 
             for ls in linestrings:
                 length = ls.length
@@ -209,14 +174,31 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
                     dy = p2.y - p1.y
                     angle = math.atan2(dy, dx) if self.rotate_outline_shapes else 0.0
 
-                    ctx.save()
-                    ctx.translate(p1.x, p1.y)
-                    if angle != 0:
-                        ctx.rotate(angle)
-                    ctx.move_to(-stamp_sz / 4.0, stamp_sz / 3.0)
-                    ctx.text_path(self.outline_text)
-                    ctx.fill()
-                    ctx.restore()
+                    sampled_mode = rng.choice(self.random_modes)
+                    self._render_element(ctx, p1, angle, sampled_mode, asset_contour)
+
+        else:
+            # Single element type outline (dotted, oriented_lines, oriented_shapes, asset_shape, text)
+            step = max(1.0, self.outline_distance)
+            asset_contour = self.load_asset_vector_contour(self.outline_asset_image)
+
+            for ls in linestrings:
+                length = ls.length
+                if length <= 0:
+                    continue
+                num_samples = int(math.floor(length / step))
+                for i in range(num_samples):
+                    d = i * step
+                    p1 = ls.interpolate(d)
+                    p2 = ls.interpolate(min(d + 1.0, length))
+
+                    dx = p2.x - p1.x
+                    dy = p2.y - p1.y
+                    angle = math.atan2(dy, dx) if self.rotate_outline_shapes else 0.0
+
+                    self._render_element(
+                        ctx, p1, angle, self.outline_mode, asset_contour
+                    )
 
     def generate_image(self, image_path):
         """process input image and render manipulated outline canvas."""
@@ -272,6 +254,7 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
                 "asset_shape",
                 "text",
                 "letters",
+                "random",
                 "none",
             ],
             "label": "outline manipulation mode options",
@@ -387,6 +370,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
                     outline_scale=o_scale,
                     fill_interior=o_fill,
                     interior_color=config.interior_color,
+                    seed=n,
                     linedrawing_input_folder=config.linedrawing_input_folder,
                 )
 
@@ -409,7 +393,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
 
                 if o_mode in ["text", "letters"]:
                     name_parts.append(f"txt-{o_text}")
-                elif o_asset:
+                elif o_asset and o_mode == "asset_shape":
                     name_parts.append(f"asset-{Path(o_asset).stem}")
 
                 filename = "_".join(name_parts) + ".png"
