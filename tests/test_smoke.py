@@ -18,12 +18,30 @@ def test_generator_registry():
     from mindset.generators import list_generators
 
     registry = _load_registry()
-    assert len(registry) == 35
+    assert len(registry) == 36
 
     cats = list_generators()
     assert len(cats["visual_illusions"]) == 10
     assert len(cats["low_mid_vision"]) == 9
-    assert len(cats["shape_recognition"]) == 16
+    assert len(cats["shape_recognition"]) == 17
+
+
+def test_generate_composite_textures(tmp_path):
+    """smoke test: generate a small composite_textures dataset."""
+    from mindset.generators.shape_recognition.composite_textures import generate_all
+
+    out = tmp_path / "composite-textures-smoke"
+
+    result = generate_all(
+        fg_texture_mode="lines",
+        bg_texture_mode="dots",
+        output_folder=str(out),
+    )
+
+    assert Path(result).exists()
+    assert (out / "annotation.csv").exists()
+    assert len(list(out.rglob("*.png"))) > 0
+
 
 
 
