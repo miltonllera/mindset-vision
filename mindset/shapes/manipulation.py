@@ -1,12 +1,9 @@
 """base drawing class for texture and outline object manipulations using Shapely and PyCairo."""
 
-import math
-from pathlib import Path
-
-import cairo
 import cv2
 import numpy as np
 from PIL import Image
+from pathlib import Path
 from shapely.geometry import LineString, Polygon
 
 from mindset.drawing.base import DrawStimuli
@@ -125,11 +122,10 @@ class BaseDrawManipulatedObject(DrawStimuli):
                 pts[:, 0] += offset_x
                 pts[:, 1] += offset_y
 
-                ls = LineString(pts)
-                all_linestrings.append(ls)
-
                 if hierarchy[idx][3] == -1:
                     outer_polygons.append(Polygon(pts))
+                    all_linestrings.append(LineString(pts))
+
 
         return outer_polygons, all_linestrings
 

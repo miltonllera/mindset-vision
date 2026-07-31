@@ -138,5 +138,3 @@ def test_generate_manipulated_outlines(tmp_path):
     assert (out / "annotation.csv").exists()
     assert len(list(out.rglob("*.png"))) > 0
 
-
-

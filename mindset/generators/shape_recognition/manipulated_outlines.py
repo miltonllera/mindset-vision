@@ -1,5 +1,3 @@
-"""manipulated outlines dataset generator using Shapely and PyCairo."""
-
 import csv
 import itertools
 import math
@@ -17,7 +15,7 @@ from mindset.utils import to_list
 
 
 class DrawManipulatedOutline(BaseDrawManipulatedObject):
-    """draws object outline manipulations using PyCairo and Shapely."""
+    """Draws object outline manipulations using PyCairo and Shapely."""
 
     def __init__(
         self,
@@ -289,7 +287,7 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
         metadata={"label": "scale/size/length of dots/dashes/elements along outline options"},
     )
     fill_interior: list = field(
-        default_factory=lambda: [True],
+        default_factory=lambda: [False],
         metadata={"label": "fill object interior options (True/False)"},
     )
     interior_color: list = field(
