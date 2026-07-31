@@ -1,5 +1,3 @@
-"""manipulated outlines dataset generator using Shapely and PyCairo."""
-
 import csv
 import itertools
 import math
@@ -15,15 +13,8 @@ from mindset.generators._base import GeneratorConfig, generator, register
 from mindset.shapes.manipulation import BaseDrawManipulatedObject
 
 
-def _to_list(val: Any) -> list[Any]:
-    """ensure val is a list of options."""
-    if isinstance(val, (list, tuple)):
-        return list(val)
-    return [val]
-
-
 class DrawManipulatedOutline(BaseDrawManipulatedObject):
-    """draws object outline manipulations using PyCairo and Shapely."""
+    """Draws object outline manipulations using PyCairo and Shapely."""
 
     def __init__(
         self,
@@ -32,6 +23,8 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
         outline_scale=6.0,
         outline_distance=12.0,
         outline_asset_image="",
+        outline_text="A",
+        outline_font="Sans",
         rotate_outline_shapes=False,
         fill_interior=True,
         interior_color=(255, 255, 255),
@@ -45,6 +38,8 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
         self.outline_scale = float(outline_scale)
         self.outline_distance = float(outline_distance)
         self.outline_asset_image = outline_asset_image
+        self.outline_text = str(outline_text)
+        self.outline_font = str(outline_font)
         self.rotate_outline_shapes = rotate_outline_shapes
         self.fill_interior = fill_interior
         self.interior_color = interior_color
@@ -191,6 +186,38 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
                         ctx.fill()
                         ctx.restore()
 
+        elif self.outline_mode == "text" or self.outline_mode == "letters":
+            step = max(1.0, self.outline_distance)
+            stamp_sz = max(4.0, self.outline_scale)
+
+            ctx.select_font_face(
+                self.outline_font, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD
+            )
+            ctx.set_font_size(stamp_sz)
+
+            for ls in linestrings:
+                length = ls.length
+                if length <= 0:
+                    continue
+                num_samples = int(math.floor(length / step))
+                for i in range(num_samples):
+                    d = i * step
+                    p1 = ls.interpolate(d)
+                    p2 = ls.interpolate(min(d + 1.0, length))
+
+                    dx = p2.x - p1.x
+                    dy = p2.y - p1.y
+                    angle = math.atan2(dy, dx) if self.rotate_outline_shapes else 0.0
+
+                    ctx.save()
+                    ctx.translate(p1.x, p1.y)
+                    if angle != 0:
+                        ctx.rotate(angle)
+                    ctx.move_to(-stamp_sz / 4.0, stamp_sz / 3.0)
+                    ctx.text_path(self.outline_text)
+                    ctx.fill()
+                    ctx.restore()
+
     def generate_image(self, image_path):
         """process input image and render manipulated outline canvas."""
         outer_polygons, linestrings = self.extract_contours(image_path)
@@ -243,6 +270,8 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
                 "oriented_lines",
                 "oriented_shapes",
                 "asset_shape",
+                "text",
+                "letters",
                 "none",
             ],
             "label": "outline manipulation mode options",
@@ -256,6 +285,14 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
         default_factory=lambda: [""],
         metadata={"label": "asset categories or image paths for outline shape stamping"},
     )
+    outline_text: list = field(
+        default_factory=lambda: ["A"],
+        metadata={"label": "text/letter string options for text mode"},
+    )
+    outline_font: str = field(
+        default="Sans",
+        metadata={"label": "font family name for text mode"},
+    )
     rotate_outline_shapes: list = field(
         default_factory=lambda: [False],
         metadata={"label": "rotate outline shapes options (True/False)"},
@@ -265,7 +302,7 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
         metadata={"label": "distance between dots/dashes/elements along outline options"},
     )
     outline_scale: list = field(
-        default_factory=lambda: [6.0],
+        default_factory=lambda: [10.0],
         metadata={"label": "scale/size/length of dots/dashes/elements along outline options"},
     )
     fill_interior: list = field(
@@ -281,6 +318,13 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
         default="data/shape_and_object_recognition/manipulated_outlines",
         metadata={"label": "output folder"},
     )
+
+
+def _to_list(val: Any) -> list[Any]:
+    """ensure val is a list of options."""
+    if isinstance(val, (list, tuple)):
+        return list(val)
+    return [val]
 
 
 @register("manipulated_outlines", "shape_recognition")
@@ -304,9 +348,10 @@ def generate_all(config: ManipulatedOutlinesConfig):
     rotates = [bool(r) for r in _to_list(config.rotate_outline_shapes)]
     fills = [bool(f) for f in _to_list(config.fill_interior)]
     asset_images = _to_list(config.outline_asset_image)
+    texts = _to_list(config.outline_text)
 
     combinations = list(
-        itertools.product(modes, scales, distances, rotates, fills, asset_images)
+        itertools.product(modes, scales, distances, rotates, fills, asset_images, texts)
     )
 
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
@@ -317,6 +362,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
                 "Class",
                 "OutlineMode",
                 "OutlineAssetImage",
+                "OutlineText",
                 "RotateOutlineShapes",
                 "FillInterior",
                 "BackgroundColor",
@@ -332,7 +378,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
             class_name = img_path.parent.stem
             image_name = img_path.stem
 
-            for o_mode, o_scale, o_dist, o_rot, o_fill, o_asset in combinations:
+            for o_mode, o_scale, o_dist, o_rot, o_fill, o_asset, o_text in combinations:
                 ds = DrawManipulatedOutline(
                     background=config.background_color,
                     canvas_size=config.canvas_size,
@@ -341,6 +387,8 @@ def generate_all(config: ManipulatedOutlinesConfig):
                     outline_mode=o_mode,
                     outline_color=config.outline_color,
                     outline_asset_image=o_asset,
+                    outline_text=o_text,
+                    outline_font=config.outline_font,
                     rotate_outline_shapes=o_rot,
                     outline_distance=o_dist,
                     outline_scale=o_scale,
@@ -365,7 +413,10 @@ def generate_all(config: ManipulatedOutlinesConfig):
                     name_parts.append("rot")
                 if not o_fill:
                     name_parts.append("nofill")
-                if o_asset:
+
+                if o_mode in ["text", "letters"]:
+                    name_parts.append(f"txt-{o_text}")
+                elif o_asset:
                     name_parts.append(f"asset-{Path(o_asset).stem}")
 
                 filename = "_".join(name_parts) + ".png"
@@ -378,6 +429,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
                         class_name,
                         o_mode,
                         o_asset,
+                        o_text,
                         o_rot,
                         o_fill,
                         ds.background,

@@ -1,5 +1,3 @@
-"""manipulated textures dataset generator using Shapely and PyCairo."""
-
 import csv
 import itertools
 import math
@@ -15,25 +13,23 @@ from mindset.generators._base import GeneratorConfig, generator, register
 from mindset.shapes.manipulation import BaseDrawManipulatedObject
 
 
-def _to_list(val: Any) -> list[Any]:
-    """ensure val is a list of options."""
-    if isinstance(val, (list, tuple)):
-        return list(val)
-    return [val]
-
-
 class DrawManipulatedTexture(BaseDrawManipulatedObject):
-    """draws object texture manipulations (foreground or background target region) using PyCairo and Shapely."""
+    """
+    Draws object texture manipulations (foreground or background target region) using
+    PyCairo and Shapely.
+    """
 
     def __init__(
         self,
         target_region="foreground",
         texture_mode="lines",
         texture_color=(255, 255, 255),
-        texture_spacing=10,
+        texture_line_spacing=10,
         texture_scale=2.0,
         texture_angle=45.0,
         texture_asset_image="",
+        texture_text="A",
+        texture_font="Sans",
         outline_color=(255, 255, 255),
         outline_width=0,
         *args,
@@ -44,10 +40,12 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
         self.target_region = target_region
         self.texture_mode = texture_mode
         self.texture_color = texture_color
-        self.texture_spacing = texture_spacing
+        self.texture_line_spacing = texture_line_spacing
         self.texture_scale = float(texture_scale)
         self.texture_angle = texture_angle
         self.texture_asset_image = texture_asset_image
+        self.texture_text = str(texture_text)
+        self.texture_font = str(texture_font)
         self.outline_color = outline_color
         self.outline_width = outline_width
 
@@ -94,7 +92,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
             rad = math.radians(self.texture_angle)
             diag = math.hypot(canvas_w, canvas_h)
             cx, cy = canvas_w / 2.0, canvas_h / 2.0
-            spacing = max(1, self.texture_spacing)
+            spacing = max(1, self.texture_line_spacing)
             num_lines = int(diag / spacing) + 2
 
             for i in range(-num_lines, num_lines):
@@ -111,77 +109,93 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                 ctx.line_to(x2, y2)
                 ctx.stroke()
 
-        elif self.texture_mode == "grid":
+        else:
+            # Grid, Dots, Checkerboard, Asset Shape, Text/Letters
             if self.target_region == "foreground":
                 ctx.set_source_rgb(bg_r, bg_g, bg_b)
                 ctx.paint()
 
             ctx.set_source_rgb(tx_r, tx_g, tx_b)
-            ctx.set_line_width(max(0.5, self.texture_scale))
-            spacing = max(1, self.texture_spacing)
 
-            for x in range(0, canvas_w + spacing, spacing):
-                ctx.move_to(x, 0)
-                ctx.line_to(x, canvas_h)
-                ctx.stroke()
+            # Apply pattern rotation around canvas center if angle != 0
+            if self.texture_angle != 0:
+                cx, cy = canvas_w / 2.0, canvas_h / 2.0
+                ctx.translate(cx, cy)
+                ctx.rotate(math.radians(self.texture_angle))
+                ctx.translate(-cx, -cy)
 
-            for y in range(0, canvas_h + spacing, spacing):
-                ctx.move_to(0, y)
-                ctx.line_to(canvas_w, y)
-                ctx.stroke()
+            # Expand grid bounds to cover canvas when rotated
+            diag = int(math.hypot(canvas_w, canvas_h))
+            margin = (diag - min(canvas_w, canvas_h)) // 2 + 50
+            min_pos = -margin
+            max_w = canvas_w + margin
+            max_h = canvas_h + margin
 
-        elif self.texture_mode == "dots":
-            if self.target_region == "foreground":
-                ctx.set_source_rgb(bg_r, bg_g, bg_b)
-                ctx.paint()
+            if self.texture_mode == "grid":
+                ctx.set_line_width(max(0.5, self.texture_scale))
+                spacing = max(1, self.texture_line_spacing)
 
-            ctx.set_source_rgb(tx_r, tx_g, tx_b)
-            spacing = max(2, self.texture_spacing)
-            radius = max(0.5, self.texture_scale / 2.0)
+                for x in range(min_pos, max_w + spacing, spacing):
+                    ctx.move_to(x, min_pos)
+                    ctx.line_to(x, max_h)
+                    ctx.stroke()
 
-            for x in range(0, canvas_w + spacing, spacing):
-                for y in range(0, canvas_h + spacing, spacing):
-                    ctx.arc(x, y, radius, 0, 2 * math.pi)
-                    ctx.fill()
+                for y in range(min_pos, max_h + spacing, spacing):
+                    ctx.move_to(min_pos, y)
+                    ctx.line_to(max_w, y)
+                    ctx.stroke()
 
-        elif self.texture_mode == "checkerboard":
-            if self.target_region == "foreground":
-                ctx.set_source_rgb(bg_r, bg_g, bg_b)
-                ctx.paint()
+            elif self.texture_mode == "dots":
+                spacing = max(2, self.texture_line_spacing)
+                radius = max(0.5, self.texture_scale / 2.0)
 
-            ctx.set_source_rgb(tx_r, tx_g, tx_b)
-            spacing = max(2, self.texture_spacing)
-
-            for x in range(0, canvas_w, spacing):
-                for y in range(0, canvas_h, spacing):
-                    if ((x // spacing) + (y // spacing)) % 2 == 0:
-                        ctx.rectangle(x, y, spacing, spacing)
+                for x in range(min_pos, max_w + spacing, spacing):
+                    for y in range(min_pos, max_h + spacing, spacing):
+                        ctx.arc(x, y, radius, 0, 2 * math.pi)
                         ctx.fill()
 
-        elif self.texture_mode == "asset_shape":
-            if self.target_region == "foreground":
-                ctx.set_source_rgb(bg_r, bg_g, bg_b)
-                ctx.paint()
+            elif self.texture_mode == "checkerboard":
+                spacing = max(2, self.texture_line_spacing)
 
-            asset_contour = self.load_asset_vector_contour(self.texture_asset_image)
-            if asset_contour is not None:
-                ctx.set_source_rgb(tx_r, tx_g, tx_b)
-                spacing = max(4, self.texture_spacing)
-                stamp_sz = max(1.0, self.texture_scale)
-                rad = math.radians(self.texture_angle)
+                for x in range(min_pos, max_w, spacing):
+                    for y in range(min_pos, max_h, spacing):
+                        if ((x // spacing) + (y // spacing)) % 2 == 0:
+                            ctx.rectangle(x, y, spacing, spacing)
+                            ctx.fill()
 
-                for x in range(0, canvas_w + spacing, spacing):
-                    for y in range(0, canvas_h + spacing, spacing):
+            elif self.texture_mode == "asset_shape":
+                asset_contour = self.load_asset_vector_contour(self.texture_asset_image)
+                if asset_contour is not None:
+                    spacing = max(4, self.texture_line_spacing)
+                    stamp_sz = max(1.0, self.texture_scale)
+
+                    for x in range(min_pos, max_w + spacing, spacing):
+                        for y in range(min_pos, max_h + spacing, spacing):
+                            ctx.save()
+                            ctx.translate(x, y)
+                            ctx.scale(stamp_sz, stamp_sz)
+
+                            ctx.move_to(asset_contour[0, 0], asset_contour[0, 1])
+                            for pt in asset_contour[1:]:
+                                ctx.line_to(pt[0], pt[1])
+                            ctx.close_path()
+                            ctx.fill()
+                            ctx.restore()
+
+            elif self.texture_mode == "text" or self.texture_mode == "letters":
+                ctx.select_font_face(
+                    self.texture_font, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD
+                )
+                stamp_sz = max(4.0, self.texture_scale)
+                ctx.set_font_size(stamp_sz)
+                spacing = max(4, self.texture_line_spacing)
+
+                for x in range(min_pos, max_w + spacing, spacing):
+                    for y in range(min_pos, max_h + spacing, spacing):
                         ctx.save()
                         ctx.translate(x, y)
-                        if self.texture_angle != 0:
-                            ctx.rotate(rad)
-                        ctx.scale(stamp_sz, stamp_sz)
-
-                        ctx.move_to(asset_contour[0, 0], asset_contour[0, 1])
-                        for pt in asset_contour[1:]:
-                            ctx.line_to(pt[0], pt[1])
-                        ctx.close_path()
+                        ctx.move_to(-stamp_sz / 4.0, stamp_sz / 3.0)
+                        ctx.text_path(self.texture_text)
                         ctx.fill()
                         ctx.restore()
 
@@ -254,6 +268,8 @@ class ManipulatedTexturesConfig(GeneratorConfig):
                 "dots",
                 "checkerboard",
                 "asset_shape",
+                "text",
+                "letters",
                 "none",
             ],
             "label": "texture manipulation mode options",
@@ -263,27 +279,42 @@ class ManipulatedTexturesConfig(GeneratorConfig):
         default_factory=lambda: [255, 255, 255],
         metadata={"label": "texture color (RGB)"},
     )
-    texture_spacing: list = field(
+    texture_line_spacing: list = field(
         default_factory=lambda: [10],
         metadata={"label": "texture pattern spacing options"},
     )
     texture_scale: list = field(
-        default_factory=lambda: [2.0],
-        metadata={"label": "texture element scale / stroke width options"},
+        default_factory=lambda: [12.0],
+        metadata={"label": "texture element scale / font size options"},
     )
     texture_angle: list = field(
-        default_factory=lambda: [45.0],
+        default_factory=lambda: [0.0],
         metadata={"label": "texture pattern angle options (degrees)"},
     )
     texture_asset_image: list = field(
         default_factory=lambda: [""],
         metadata={"label": "asset categories or image paths for texture shape pattern"},
     )
+    texture_text: list = field(
+        default_factory=lambda: ["A"],
+        metadata={"label": "text/letter string options for text mode"},
+    )
+    texture_font: str = field(
+        default="Sans",
+        metadata={"label": "font family name for text mode"},
+    )
     antialiasing: bool = field(default=False, metadata={"label": "antialiasing"})
     output_folder: str = field(
         default="data/shape_and_object_recognition/manipulated_textures",
         metadata={"label": "output folder"},
     )
+
+
+def _to_list(val: Any) -> list[Any]:
+    """ensure val is a list of options."""
+    if isinstance(val, (list, tuple)):
+        return list(val)
+    return [val]
 
 
 @register("manipulated_textures", "shape_recognition")
@@ -303,13 +334,14 @@ def generate_all(config: ManipulatedTexturesConfig):
 
     modes = _to_list(config.texture_mode)
     angles = [float(a) for a in _to_list(config.texture_angle)]
-    spacings = [int(s) for s in _to_list(config.texture_spacing)]
+    spacings = [int(s) for s in _to_list(config.texture_line_spacing)]
     scales = [float(sc) for sc in _to_list(config.texture_scale)]
     target_regions = _to_list(config.target_region)
     asset_images = _to_list(config.texture_asset_image)
+    texts = _to_list(config.texture_text)
 
     combinations = list(
-        itertools.product(modes, angles, spacings, scales, target_regions, asset_images)
+        itertools.product(modes, angles, spacings, scales, target_regions, asset_images, texts)
     )
 
     with open(output_folder / "annotation.csv", "w", newline="") as annfile:
@@ -321,6 +353,7 @@ def generate_all(config: ManipulatedTexturesConfig):
                 "TargetRegion",
                 "TextureMode",
                 "TextureAssetImage",
+                "TextureText",
                 "TextureAngle",
                 "TextureLineSpacing",
                 "TextureScale",
@@ -335,7 +368,7 @@ def generate_all(config: ManipulatedTexturesConfig):
             class_name = img_path.parent.stem
             image_name = img_path.stem
 
-            for t_mode, t_angle, texture_spacing, t_scale, t_region, t_asset in combinations:
+            for t_mode, t_angle, t_spacing, t_scale, t_region, t_asset, t_text in combinations:
                 ds = DrawManipulatedTexture(
                     background=config.background_color,
                     canvas_size=config.canvas_size,
@@ -344,10 +377,12 @@ def generate_all(config: ManipulatedTexturesConfig):
                     target_region=t_region,
                     texture_mode=t_mode,
                     texture_color=config.texture_color,
-                    texture_spacing=texture_spacing,
+                    texture_line_spacing=t_spacing,
                     texture_scale=t_scale,
                     texture_angle=t_angle,
                     texture_asset_image=t_asset,
+                    texture_text=t_text,
+                    texture_font=config.texture_font,
                     linedrawing_input_folder=config.linedrawing_input_folder,
                 )
 
@@ -357,11 +392,12 @@ def generate_all(config: ManipulatedTexturesConfig):
                 fmt_sc = int(t_scale) if t_scale == int(t_scale) else t_scale
                 name_parts = [image_name, f"tex-{t_mode}"]
 
-                if t_mode in ["lines", "asset_shape"]:
+                if t_mode in [
+                    "lines", "grid", "dots", "checkerboard", "asset_shape", "text", "letters"
+                ]:
                     name_parts.append(f"ang{int(t_angle)}")
-                if t_mode in ["lines", "grid", "dots", "checkerboard", "asset_shape"]:
-                    name_parts.append(f"spc{texture_spacing}")
-                if t_mode in ["lines", "grid", "dots", "asset_shape"]:
+                    name_parts.append(f"spc{t_spacing}")
+                if t_mode in ["lines", "grid", "dots", "asset_shape", "text", "letters"]:
                     name_parts.append(f"sc{fmt_sc}")
 
                 if t_region == "background":
@@ -369,7 +405,9 @@ def generate_all(config: ManipulatedTexturesConfig):
                 else:
                     name_parts.append("fg")
 
-                if t_asset:
+                if t_mode in ["text", "letters"]:
+                    name_parts.append(f"txt-{t_text}")
+                elif t_asset:
                     name_parts.append(f"asset-{Path(t_asset).stem}")
 
                 filename = "_".join(name_parts) + ".png"
@@ -383,8 +421,9 @@ def generate_all(config: ManipulatedTexturesConfig):
                         t_region,
                         t_mode,
                         t_asset,
+                        t_text,
                         t_angle,
-                        texture_spacing,
+                        t_spacing,
                         t_scale,
                         ds.background,
                         config.texture_color,
