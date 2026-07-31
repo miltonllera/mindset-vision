@@ -3,7 +3,6 @@ import itertools
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import cairo
 from shapely.geometry import LineString
@@ -11,6 +10,7 @@ from tqdm.auto import tqdm
 
 from mindset.generators._base import GeneratorConfig, generator, register
 from mindset.shapes.manipulation import BaseDrawManipulatedObject
+from mindset.utils import to_list
 
 
 class DrawManipulatedOutline(BaseDrawManipulatedObject):
@@ -320,13 +320,6 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
     )
 
 
-def _to_list(val: Any) -> list[Any]:
-    """ensure val is a list of options."""
-    if isinstance(val, (list, tuple)):
-        return list(val)
-    return [val]
-
-
 @register("manipulated_outlines", "shape_recognition")
 @generator(ManipulatedOutlinesConfig)
 def generate_all(config: ManipulatedOutlinesConfig):
@@ -342,13 +335,13 @@ def generate_all(config: ManipulatedOutlinesConfig):
         linedrawing_input_folder.rglob("*.png")
     )
 
-    modes = _to_list(config.outline_mode)
-    scales = [float(s) for s in _to_list(config.outline_scale)]
-    distances = [float(d) for d in _to_list(config.outline_distance)]
-    rotates = [bool(r) for r in _to_list(config.rotate_outline_shapes)]
-    fills = [bool(f) for f in _to_list(config.fill_interior)]
-    asset_images = _to_list(config.outline_asset_image)
-    texts = _to_list(config.outline_text)
+    modes = to_list(config.outline_mode)
+    scales = [float(s) for s in to_list(config.outline_scale)]
+    distances = [float(d) for d in to_list(config.outline_distance)]
+    rotates = [bool(r) for r in to_list(config.rotate_outline_shapes)]
+    fills = [bool(f) for f in to_list(config.fill_interior)]
+    asset_images = to_list(config.outline_asset_image)
+    texts = to_list(config.outline_text)
 
     combinations = list(
         itertools.product(modes, scales, distances, rotates, fills, asset_images, texts)

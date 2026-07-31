@@ -2,15 +2,13 @@ import csv
 import itertools
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, List
 
 from PIL import Image
 from tqdm.auto import tqdm
 
 from mindset.generators._base import GeneratorConfig, generator, register
-from mindset.generators.shape_recognition.manipulated_textures import (
-    DrawManipulatedTexture,
-)
+from mindset.generators.shape_recognition.manipulated_textures import  DrawManipulatedTexture
+from mindset.utils import to_list
 
 
 class DrawCompositeTexture:
@@ -154,13 +152,6 @@ class CompositeTexturesConfig(GeneratorConfig):
     )
 
 
-def _to_list(val: Any) -> List[Any]:
-    """ensure val is a list of options."""
-    if isinstance(val, (list, tuple)):
-        return list(val)
-    return [val]
-
-
 @register("composite_textures", "shape_recognition")
 @generator(CompositeTexturesConfig)
 def generate_all(config: CompositeTexturesConfig):
@@ -177,12 +168,12 @@ def generate_all(config: CompositeTexturesConfig):
     )
 
     # Prepare Foreground Combinations
-    fg_modes = _to_list(config.fg_texture_mode)
-    fg_angles = [float(a) for a in _to_list(config.fg_texture_angle)]
-    fg_spacings = [int(s) for s in _to_list(config.fg_texture_line_spacing)]
-    fg_scales = [float(sc) for sc in _to_list(config.fg_texture_scale)]
-    fg_assets = _to_list(config.fg_texture_asset_image)
-    fg_texts = _to_list(config.fg_texture_text)
+    fg_modes = to_list(config.fg_texture_mode)
+    fg_angles = [float(a) for a in to_list(config.fg_texture_angle)]
+    fg_spacings = [int(s) for s in to_list(config.fg_texture_line_spacing)]
+    fg_scales = [float(sc) for sc in to_list(config.fg_texture_scale)]
+    fg_assets = to_list(config.fg_texture_asset_image)
+    fg_texts = to_list(config.fg_texture_text)
 
     fg_combinations = list(
         itertools.product(
@@ -191,12 +182,12 @@ def generate_all(config: CompositeTexturesConfig):
     )
 
     # Prepare Background Combinations
-    bg_modes = _to_list(config.bg_texture_mode)
-    bg_angles = [float(a) for a in _to_list(config.bg_texture_angle)]
-    bg_spacings = [int(s) for s in _to_list(config.bg_texture_line_spacing)]
-    bg_scales = [float(sc) for sc in _to_list(config.bg_texture_scale)]
-    bg_assets = _to_list(config.bg_texture_asset_image)
-    bg_texts = _to_list(config.bg_texture_text)
+    bg_modes = to_list(config.bg_texture_mode)
+    bg_angles = [float(a) for a in to_list(config.bg_texture_angle)]
+    bg_spacings = [int(s) for s in to_list(config.bg_texture_line_spacing)]
+    bg_scales = [float(sc) for sc in to_list(config.bg_texture_scale)]
+    bg_assets = to_list(config.bg_texture_asset_image)
+    bg_texts = to_list(config.bg_texture_text)
 
     bg_combinations = list(
         itertools.product(

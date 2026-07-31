@@ -3,7 +3,6 @@ import itertools
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import cairo
 from shapely.geometry import LineString
@@ -11,6 +10,7 @@ from tqdm.auto import tqdm
 
 from mindset.generators._base import GeneratorConfig, generator, register
 from mindset.shapes.manipulation import BaseDrawManipulatedObject
+from mindset.utils import to_list
 
 
 class DrawManipulatedTexture(BaseDrawManipulatedObject):
@@ -310,13 +310,6 @@ class ManipulatedTexturesConfig(GeneratorConfig):
     )
 
 
-def _to_list(val: Any) -> list[Any]:
-    """ensure val is a list of options."""
-    if isinstance(val, (list, tuple)):
-        return list(val)
-    return [val]
-
-
 @register("manipulated_textures", "shape_recognition")
 @generator(ManipulatedTexturesConfig)
 def generate_all(config: ManipulatedTexturesConfig):
@@ -332,13 +325,13 @@ def generate_all(config: ManipulatedTexturesConfig):
         linedrawing_input_folder.rglob("*.png")
     )
 
-    modes = _to_list(config.texture_mode)
-    angles = [float(a) for a in _to_list(config.texture_angle)]
-    spacings = [int(s) for s in _to_list(config.texture_line_spacing)]
-    scales = [float(sc) for sc in _to_list(config.texture_scale)]
-    target_regions = _to_list(config.target_region)
-    asset_images = _to_list(config.texture_asset_image)
-    texts = _to_list(config.texture_text)
+    modes = to_list(config.texture_mode)
+    angles = [float(a) for a in to_list(config.texture_angle)]
+    spacings = [int(s) for s in to_list(config.texture_line_spacing)]
+    scales = [float(sc) for sc in to_list(config.texture_scale)]
+    target_regions = to_list(config.target_region)
+    asset_images = to_list(config.texture_asset_image)
+    texts = to_list(config.texture_text)
 
     combinations = list(
         itertools.product(modes, angles, spacings, scales, target_regions, asset_images, texts)
