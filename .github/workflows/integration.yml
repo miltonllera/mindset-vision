@@ -32,6 +32,7 @@ jobs:
       - name: install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install meson ninja pycairo
           pip install pytest
           pip install -e .
 
