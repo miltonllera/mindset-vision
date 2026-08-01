@@ -332,18 +332,18 @@ def generate_all(config: ManipulatedOutlinesConfig):
         writer = csv.writer(annfile)
         writer.writerow(
             [
-                "Path",
+                "IterNum",
                 "Class",
                 "OutlineMode",
+                "OutlineDistance",
+                "OutlineScale",
                 "OutlineAssetImage",
                 "OutlineText",
                 "RotateOutlineShapes",
                 "FillInterior",
                 "BackgroundColor",
                 "OutlineColor",
-                "OutlineDistance",
-                "OutlineScale",
-                "IterNum",
+                "Path",
             ]
         )
 
@@ -353,6 +353,8 @@ def generate_all(config: ManipulatedOutlinesConfig):
             image_name = img_path.stem
 
             for o_mode, o_scale, o_dist, o_rot, o_fill, o_asset, o_text in combinations:
+                # Handle random mode
+                random_modes = [m for m in modes if m != "random"] if o_mode == "random" else None
                 ds = DrawManipulatedOutline(
                     background=config.background_color,
                     canvas_size=config.canvas_size,
@@ -366,6 +368,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
                     rotate_outline_shapes=o_rot,
                     outline_distance=o_dist,
                     outline_scale=o_scale,
+                    random_modes=random_modes,
                     fill_interior=o_fill,
                     interior_color=config.interior_color,
                     seed=n,
@@ -400,18 +403,18 @@ def generate_all(config: ManipulatedOutlinesConfig):
                 img.save(output_folder / path)
                 writer.writerow(
                     [
-                        path,
+                        n,
                         class_name,
                         o_mode,
+                        o_dist,
+                        o_scale,
                         o_asset,
                         o_text,
                         o_rot,
                         o_fill,
                         ds.background,
                         config.outline_color,
-                        o_dist,
-                        o_scale,
-                        n,
+                        path,
                     ]
                 )
                 n += 1
