@@ -346,7 +346,7 @@ def generate_all(config: ManipulatedTexturesConfig):
                 "TargetRegion",
                 "TextureMode",
                 "TextureScale",
-                "TextureLineSpacing",
+                "TextureSpacing",
                 "TextureAssetImage",
                 "TextureText",
                 "TextureAngle",
