@@ -238,8 +238,8 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
 class ManipulatedTexturesConfig(GeneratorConfig):
     """config for manipulated textures dataset."""
 
-    linedrawing_input_folder: str = field(
-        default="mindset/assets/linedrawings/cropped/",
+    linedrawing_input_folder: str | None = field(
+        default=None,
         metadata={"label": "input folder with line drawings / images"},
     )
     object_longest_side: int = field(
@@ -315,7 +315,13 @@ class ManipulatedTexturesConfig(GeneratorConfig):
 def generate_all(config: ManipulatedTexturesConfig):
     """generate manipulated textures dataset across all parameter combinations."""
     output_folder = Path(config.output_folder)
-    linedrawing_input_folder = Path(config.linedrawing_input_folder)
+
+    if config.linedrawing_input_folder is None:
+        import mindset
+        ROOT = Path(mindset.__file__).parent
+        linedrawing_input_folder = ROOT / "assets" / "linedrawings" / "cropped"
+    else:
+        linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
     all_categories = [p.stem for p in linedrawing_input_folder.glob("*") if p.is_dir()]
     for cat in all_categories:

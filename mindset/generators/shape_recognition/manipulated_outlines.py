@@ -2,6 +2,7 @@ import csv
 import itertools
 import math
 import random
+from importlib import resources
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -227,8 +228,8 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
 class ManipulatedOutlinesConfig(GeneratorConfig):
     """config for manipulated outlines dataset."""
 
-    linedrawing_input_folder: str = field(
-        default="mindset/assets/linedrawings/cropped/",
+    linedrawing_input_folder: str | None = field(
+        default=None,
         metadata={"label": "input folder with line drawings / images"},
     )
     object_longest_side: int = field(
@@ -306,7 +307,13 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
 def generate_all(config: ManipulatedOutlinesConfig):
     """generate manipulated outlines dataset across all parameter combinations."""
     output_folder = Path(config.output_folder)
-    linedrawing_input_folder = Path(config.linedrawing_input_folder)
+
+    if config.linedrawing_input_folder is None:
+        import mindset
+        ROOT = Path(mindset.__file__).parent
+        linedrawing_input_folder = ROOT / "assets" / "linedrawings" / "cropped"
+    else:
+        linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
     all_categories = [p.stem for p in linedrawing_input_folder.glob("*") if p.is_dir()]
     for cat in all_categories:
@@ -372,7 +379,7 @@ def generate_all(config: ManipulatedOutlinesConfig):
                     fill_interior=o_fill,
                     interior_color=config.interior_color,
                     seed=n,
-                    linedrawing_input_folder=config.linedrawing_input_folder,
+                    linedrawing_input_folder=linedrawing_input_folder,
                 )
 
                 img = ds.generate_image(img_path)

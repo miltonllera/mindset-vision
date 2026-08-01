@@ -40,8 +40,8 @@ class DrawCompositeTexture:
 class CompositeTexturesConfig(GeneratorConfig):
     """config for composite foreground and background textures dataset."""
 
-    linedrawing_input_folder: str = field(
-        default="mindset/assets/linedrawings/cropped/",
+    linedrawing_input_folder: str | None = field(
+        default=None,
         metadata={"label": "input folder with line drawings / images"},
     )
     object_longest_side: int = field(
@@ -157,7 +157,13 @@ class CompositeTexturesConfig(GeneratorConfig):
 def generate_all(config: CompositeTexturesConfig):
     """generate composite textures dataset combining foreground and background texture options."""
     output_folder = Path(config.output_folder)
-    linedrawing_input_folder = Path(config.linedrawing_input_folder)
+
+    if config.linedrawing_input_folder is None:
+        import mindset
+        ROOT = Path(mindset.__file__).parent
+        linedrawing_input_folder = ROOT / "assets" / "linedrawings" / "cropped"
+    else:
+        linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
     all_categories = [p.stem for p in linedrawing_input_folder.glob("*") if p.is_dir()]
     for cat in all_categories:
