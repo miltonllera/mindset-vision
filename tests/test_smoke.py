@@ -90,6 +90,20 @@ def test_cli_entry_point():
     assert callable(main)
 
 
+def test_cli_parse_generator_args():
+    """verify CLI generator arguments are dynamically parsed without skipping base fields."""
+    from mindset.cli import _parse_generator_args
+    from mindset.generators.low_mid_vision.amodal_completion import AmodalCompletionConfig
+
+    args = ["--num-samples", "2", "--canvas-size", "256", "256", "-o", "/tmp/test_out"]
+    parsed = _parse_generator_args(AmodalCompletionConfig, args)
+
+    assert parsed["num_samples"] == 2
+    assert parsed["canvas_size"] == [256, 256]
+    assert parsed["output_folder"] == "/tmp/test_out"
+
+
+
 def test_generate_relational_vs_coordinate(tmp_path):
     """smoke test: generate a small relational vs coordinate dataset."""
     from mindset.generators.low_mid_vision.relational_vs_coordinate import generate_all

@@ -266,7 +266,7 @@ def generate_all(config: CompositeTexturesConfig):
                     "texture_asset_image": fg_asset,
                     "texture_text": fg_text,
                     "texture_font": config.fg_texture_font,
-                    "linedrawing_input_folder": config.linedrawing_input_folder,
+                    "linedrawing_input_folder": linedrawing_input_folder,
                 }
 
                 bg_params = {
@@ -282,7 +282,7 @@ def generate_all(config: CompositeTexturesConfig):
                     "texture_asset_image": bg_asset,
                     "texture_text": bg_text,
                     "texture_font": config.bg_texture_font,
-                    "linedrawing_input_folder": config.linedrawing_input_folder,
+                    "linedrawing_input_folder": linedrawing_input_folder,
                 }
 
                 ds = DrawCompositeTexture(fg_params=fg_params, bg_params=bg_params)
