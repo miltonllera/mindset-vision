@@ -382,7 +382,7 @@ def generate_all(config: ManipulatedTexturesConfig):
                     texture_asset_image=t_asset,
                     texture_text=t_text,
                     texture_font=config.texture_font,
-                    linedrawing_input_folder=config.linedrawing_input_folder,
+                    linedrawing_input_folder=linedrawing_input_folder,
                 )
 
                 img = ds.generate_image(img_path)

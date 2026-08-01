@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from typing import get_args, get_origin
 import yaml
 from dataclasses import asdict, fields
 
@@ -41,25 +42,30 @@ def _parse_val(s):
 
 
 def _parse_generator_args(config_cls, remaining):
-    """parse generator-specific CLI flags from leftover args."""
-    skip = {"output_folder", "behaviour_if_present", "canvas_size", "background_color", "antialiasing"}
+    """parse generator-specific CLI flags dynamically from dataclass fields."""
     gen_parser = argparse.ArgumentParser(add_help=False)
     for fld in fields(config_cls):
-        if fld.name in skip:
-            continue
-        flag = f"--{fld.name.replace('_', '-')}"
+        flags = [f"--{fld.name.replace('_', '-')}"]
+        if fld.name == "output_folder":
+            flags.append("-o")
+
         match fld.type:
             case t if t == bool:
-                gen_parser.add_argument(flag, action=argparse.BooleanOptionalAction, default=None)
+                gen_parser.add_argument(*flags, action=argparse.BooleanOptionalAction, default=None)
             case t if t == list:
-                gen_parser.add_argument(flag, nargs="+", type=_parse_val, default=None)
-
+                gen_parser.add_argument(*flags, nargs="+", type=_parse_val, default=None)
             case t if t == int:
-                gen_parser.add_argument(flag, type=int, default=None)
+                gen_parser.add_argument(*flags, type=int, default=None)
             case t if t == float:
-                gen_parser.add_argument(flag, type=float, default=None)
+                gen_parser.add_argument(*flags, type=float, default=None)
+            case t if get_origin(t) is tuple:
+                type_args = get_args(t)
+                gen_parser.add_argument(
+                    *flags, type=type_args[0], nargs=len(type_args), default=None
+                )
             case _:
-                gen_parser.add_argument(flag, type=str, default=None)
+                gen_parser.add_argument(*flags, type=str, default=None)
+
     gen_args, unknown = gen_parser.parse_known_args(remaining)
     if unknown:
         print(f"warning: unrecognized arguments: {' '.join(unknown)}")
@@ -76,9 +82,6 @@ def main():
 
     gen = sub.add_parser("generate", help="generate a dataset")
     gen.add_argument("dataset", help="dataset name or 'all'")
-    gen.add_argument("--samples", type=int, help="override all sample-count fields")
-    gen.add_argument("--canvas-size", type=int, nargs=2, help="canvas width height")
-    gen.add_argument("--output", "-o", help="output folder")
     gen.add_argument("--config", help="path to yaml config file")
     gen.add_argument(
         "--save-config", action="store_true", help="dump default config to yaml"
@@ -138,14 +141,6 @@ def main():
                         kwargs = yaml.safe_load(fh)
                 if remaining:
                     kwargs.update(_parse_generator_args(config_cls, remaining))
-                if args.output:
-                    kwargs["output_folder"] = args.output
-                if args.canvas_size:
-                    kwargs["canvas_size"] = args.canvas_size
-                if args.samples:
-                    for fld in fields(config_cls):
-                        if "samples" in fld.name and fld.name not in kwargs:
-                            kwargs[fld.name] = args.samples
 
                 info["func"](**kwargs)
 
@@ -156,3 +151,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
