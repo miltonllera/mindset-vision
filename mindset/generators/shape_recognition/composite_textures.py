@@ -40,8 +40,8 @@ class DrawCompositeTexture:
 class CompositeTexturesConfig(GeneratorConfig):
     """config for composite foreground and background textures dataset."""
 
-    linedrawing_input_folder: str = field(
-        default="mindset/assets/linedrawings/cropped/",
+    linedrawing_input_folder: str | None = field(
+        default=None,
         metadata={"label": "input folder with line drawings / images"},
     )
     object_longest_side: int = field(
@@ -75,7 +75,7 @@ class CompositeTexturesConfig(GeneratorConfig):
         default_factory=lambda: [255, 255, 255],
         metadata={"label": "foreground texture color (RGB)"},
     )
-    fg_texture_line_spacing: list = field(
+    fg_texture_spacing: list = field(
         default_factory=lambda: [10],
         metadata={"label": "foreground texture line spacing options"},
     )
@@ -121,7 +121,7 @@ class CompositeTexturesConfig(GeneratorConfig):
         default_factory=lambda: [255, 255, 255],
         metadata={"label": "background texture color (RGB)"},
     )
-    bg_texture_line_spacing: list = field(
+    bg_texture_spacing: list = field(
         default_factory=lambda: [16],
         metadata={"label": "background texture line spacing options"},
     )
@@ -157,7 +157,13 @@ class CompositeTexturesConfig(GeneratorConfig):
 def generate_all(config: CompositeTexturesConfig):
     """generate composite textures dataset combining foreground and background texture options."""
     output_folder = Path(config.output_folder)
-    linedrawing_input_folder = Path(config.linedrawing_input_folder)
+
+    if config.linedrawing_input_folder is None:
+        import mindset
+        ROOT = Path(mindset.__file__).parent
+        linedrawing_input_folder = ROOT / "assets" / "linedrawings" / "cropped"
+    else:
+        linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
     all_categories = [p.stem for p in linedrawing_input_folder.glob("*") if p.is_dir()]
     for cat in all_categories:
@@ -170,7 +176,7 @@ def generate_all(config: CompositeTexturesConfig):
     # Prepare Foreground Combinations
     fg_modes = to_list(config.fg_texture_mode)
     fg_angles = [float(a) for a in to_list(config.fg_texture_angle)]
-    fg_spacings = [int(s) for s in to_list(config.fg_texture_line_spacing)]
+    fg_spacings = [int(s) for s in to_list(config.fg_texture_spacing)]
     fg_scales = [float(sc) for sc in to_list(config.fg_texture_scale)]
     fg_assets = to_list(config.fg_texture_asset_image)
     fg_texts = to_list(config.fg_texture_text)
@@ -184,7 +190,7 @@ def generate_all(config: CompositeTexturesConfig):
     # Prepare Background Combinations
     bg_modes = to_list(config.bg_texture_mode)
     bg_angles = [float(a) for a in to_list(config.bg_texture_angle)]
-    bg_spacings = [int(s) for s in to_list(config.bg_texture_line_spacing)]
+    bg_spacings = [int(s) for s in to_list(config.bg_texture_spacing)]
     bg_scales = [float(sc) for sc in to_list(config.bg_texture_scale)]
     bg_assets = to_list(config.bg_texture_asset_image)
     bg_texts = to_list(config.bg_texture_text)
@@ -203,24 +209,24 @@ def generate_all(config: CompositeTexturesConfig):
         writer = csv.writer(annfile)
         writer.writerow(
             [
-                "Path",
+                "IterNum",
                 "Class",
                 "FG_TextureMode",
+                "FG_TextureScale",
+                "FG_TextureSpacing",
                 "FG_TextureAssetImage",
                 "FG_TextureText",
                 "FG_TextureAngle",
-                "FG_TextureLineSpacing",
-                "FG_TextureScale",
                 "BG_TextureMode",
+                "BG_TextureScale",
+                "BG_TextureSpacing",
                 "BG_TextureAssetImage",
                 "BG_TextureText",
                 "BG_TextureAngle",
-                "BG_TextureLineSpacing",
-                "BG_TextureScale",
                 "BackgroundColor",
                 "FG_TextureColor",
                 "BG_TextureColor",
-                "IterNum",
+                "Path",
             ]
         )
 
@@ -254,7 +260,7 @@ def generate_all(config: CompositeTexturesConfig):
                     "obj_longest_side": config.object_longest_side,
                     "texture_mode": fg_mode,
                     "texture_color": config.fg_texture_color,
-                    "texture_line_spacing": fg_spacing,
+                    "texture_spacing": fg_spacing,
                     "texture_scale": fg_scale,
                     "texture_angle": fg_angle,
                     "texture_asset_image": fg_asset,
@@ -270,7 +276,7 @@ def generate_all(config: CompositeTexturesConfig):
                     "obj_longest_side": config.object_longest_side,
                     "texture_mode": bg_mode,
                     "texture_color": config.bg_texture_color,
-                    "texture_line_spacing": bg_spacing,
+                    "texture_spacing": bg_spacing,
                     "texture_scale": bg_scale,
                     "texture_angle": bg_angle,
                     "texture_asset_image": bg_asset,
@@ -304,24 +310,24 @@ def generate_all(config: CompositeTexturesConfig):
                 img.save(output_folder / path)
                 writer.writerow(
                     [
-                        path,
+                        n,
                         class_name,
                         fg_mode,
+                        fg_scale,
+                        fg_spacing,
                         fg_asset,
                         fg_text,
                         fg_angle,
-                        fg_spacing,
-                        fg_scale,
                         bg_mode,
+                        bg_scale,
+                        bg_spacing,
                         bg_asset,
                         bg_text,
                         bg_angle,
-                        bg_spacing,
-                        bg_scale,
                         config.background_color,
                         config.fg_texture_color,
                         config.bg_texture_color,
-                        n,
+                        path,
                     ]
                 )
                 n += 1

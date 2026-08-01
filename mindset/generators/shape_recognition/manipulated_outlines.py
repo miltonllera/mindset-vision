@@ -2,6 +2,7 @@ import csv
 import itertools
 import math
 import random
+from importlib import resources
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -227,8 +228,8 @@ class DrawManipulatedOutline(BaseDrawManipulatedObject):
 class ManipulatedOutlinesConfig(GeneratorConfig):
     """config for manipulated outlines dataset."""
 
-    linedrawing_input_folder: str = field(
-        default="mindset/assets/linedrawings/cropped/",
+    linedrawing_input_folder: str | None = field(
+        default=None,
         metadata={"label": "input folder with line drawings / images"},
     )
     object_longest_side: int = field(
@@ -306,7 +307,13 @@ class ManipulatedOutlinesConfig(GeneratorConfig):
 def generate_all(config: ManipulatedOutlinesConfig):
     """generate manipulated outlines dataset across all parameter combinations."""
     output_folder = Path(config.output_folder)
-    linedrawing_input_folder = Path(config.linedrawing_input_folder)
+
+    if config.linedrawing_input_folder is None:
+        import mindset
+        ROOT = Path(mindset.__file__).parent
+        linedrawing_input_folder = ROOT / "assets" / "linedrawings" / "cropped"
+    else:
+        linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
     all_categories = [p.stem for p in linedrawing_input_folder.glob("*") if p.is_dir()]
     for cat in all_categories:
@@ -332,18 +339,18 @@ def generate_all(config: ManipulatedOutlinesConfig):
         writer = csv.writer(annfile)
         writer.writerow(
             [
-                "Path",
+                "IterNum",
                 "Class",
                 "OutlineMode",
+                "OutlineDistance",
+                "OutlineScale",
                 "OutlineAssetImage",
                 "OutlineText",
                 "RotateOutlineShapes",
                 "FillInterior",
                 "BackgroundColor",
                 "OutlineColor",
-                "OutlineDistance",
-                "OutlineScale",
-                "IterNum",
+                "Path",
             ]
         )
 
@@ -353,6 +360,8 @@ def generate_all(config: ManipulatedOutlinesConfig):
             image_name = img_path.stem
 
             for o_mode, o_scale, o_dist, o_rot, o_fill, o_asset, o_text in combinations:
+                # Handle random mode
+                random_modes = [m for m in modes if m != "random"] if o_mode == "random" else None
                 ds = DrawManipulatedOutline(
                     background=config.background_color,
                     canvas_size=config.canvas_size,
@@ -366,10 +375,11 @@ def generate_all(config: ManipulatedOutlinesConfig):
                     rotate_outline_shapes=o_rot,
                     outline_distance=o_dist,
                     outline_scale=o_scale,
+                    random_modes=random_modes,
                     fill_interior=o_fill,
                     interior_color=config.interior_color,
                     seed=n,
-                    linedrawing_input_folder=config.linedrawing_input_folder,
+                    linedrawing_input_folder=linedrawing_input_folder,
                 )
 
                 img = ds.generate_image(img_path)
@@ -400,18 +410,18 @@ def generate_all(config: ManipulatedOutlinesConfig):
                 img.save(output_folder / path)
                 writer.writerow(
                     [
-                        path,
+                        n,
                         class_name,
                         o_mode,
+                        o_dist,
+                        o_scale,
                         o_asset,
                         o_text,
                         o_rot,
                         o_fill,
                         ds.background,
                         config.outline_color,
-                        o_dist,
-                        o_scale,
-                        n,
+                        path,
                     ]
                 )
                 n += 1

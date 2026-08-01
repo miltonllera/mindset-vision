@@ -24,7 +24,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
         target_region="foreground",
         texture_mode="lines",
         texture_color=(255, 255, 255),
-        texture_line_spacing=10,
+        texture_spacing=10,
         texture_scale=2.0,
         texture_angle=45.0,
         texture_asset_image="",
@@ -40,7 +40,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
         self.target_region = target_region
         self.texture_mode = texture_mode
         self.texture_color = texture_color
-        self.texture_line_spacing = texture_line_spacing
+        self.texture_spacing = texture_spacing
         self.texture_scale = float(texture_scale)
         self.texture_angle = texture_angle
         self.texture_asset_image = texture_asset_image
@@ -92,7 +92,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
             rad = math.radians(self.texture_angle)
             diag = math.hypot(canvas_w, canvas_h)
             cx, cy = canvas_w / 2.0, canvas_h / 2.0
-            spacing = max(1, self.texture_line_spacing)
+            spacing = max(1, self.texture_spacing)
             num_lines = int(diag / spacing) + 2
 
             for i in range(-num_lines, num_lines):
@@ -133,7 +133,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
 
             if self.texture_mode == "grid":
                 ctx.set_line_width(max(0.5, self.texture_scale))
-                spacing = max(1, self.texture_line_spacing)
+                spacing = max(1, self.texture_spacing)
 
                 for x in range(min_pos, max_w + spacing, spacing):
                     ctx.move_to(x, min_pos)
@@ -146,7 +146,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                     ctx.stroke()
 
             elif self.texture_mode == "dots":
-                spacing = max(2, self.texture_line_spacing)
+                spacing = max(2, self.texture_spacing)
                 radius = max(0.5, self.texture_scale / 2.0)
 
                 for x in range(min_pos, max_w + spacing, spacing):
@@ -155,7 +155,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                         ctx.fill()
 
             elif self.texture_mode == "checkerboard":
-                spacing = max(2, self.texture_line_spacing)
+                spacing = max(2, self.texture_spacing)
 
                 for x in range(min_pos, max_w, spacing):
                     for y in range(min_pos, max_h, spacing):
@@ -166,7 +166,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
             elif self.texture_mode == "asset_shape":
                 asset_contour = self.load_asset_vector_contour(self.texture_asset_image)
                 if asset_contour is not None:
-                    spacing = max(4, self.texture_line_spacing)
+                    spacing = max(4, self.texture_spacing)
                     stamp_sz = max(1.0, self.texture_scale)
 
                     for x in range(min_pos, max_w + spacing, spacing):
@@ -188,7 +188,7 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
                 )
                 stamp_sz = max(4.0, self.texture_scale)
                 ctx.set_font_size(stamp_sz)
-                spacing = max(4, self.texture_line_spacing)
+                spacing = max(4, self.texture_spacing)
 
                 for x in range(min_pos, max_w + spacing, spacing):
                     for y in range(min_pos, max_h + spacing, spacing):
@@ -238,8 +238,8 @@ class DrawManipulatedTexture(BaseDrawManipulatedObject):
 class ManipulatedTexturesConfig(GeneratorConfig):
     """config for manipulated textures dataset."""
 
-    linedrawing_input_folder: str = field(
-        default="mindset/assets/linedrawings/cropped/",
+    linedrawing_input_folder: str | None = field(
+        default=None,
         metadata={"label": "input folder with line drawings / images"},
     )
     object_longest_side: int = field(
@@ -279,7 +279,7 @@ class ManipulatedTexturesConfig(GeneratorConfig):
         default_factory=lambda: [255, 255, 255],
         metadata={"label": "texture color (RGB)"},
     )
-    texture_line_spacing: list = field(
+    texture_spacing: list = field(
         default_factory=lambda: [10],
         metadata={"label": "texture pattern spacing options"},
     )
@@ -315,7 +315,13 @@ class ManipulatedTexturesConfig(GeneratorConfig):
 def generate_all(config: ManipulatedTexturesConfig):
     """generate manipulated textures dataset across all parameter combinations."""
     output_folder = Path(config.output_folder)
-    linedrawing_input_folder = Path(config.linedrawing_input_folder)
+
+    if config.linedrawing_input_folder is None:
+        import mindset
+        ROOT = Path(mindset.__file__).parent
+        linedrawing_input_folder = ROOT / "assets" / "linedrawings" / "cropped"
+    else:
+        linedrawing_input_folder = Path(config.linedrawing_input_folder)
 
     all_categories = [p.stem for p in linedrawing_input_folder.glob("*") if p.is_dir()]
     for cat in all_categories:
@@ -327,7 +333,7 @@ def generate_all(config: ManipulatedTexturesConfig):
 
     modes = to_list(config.texture_mode)
     angles = [float(a) for a in to_list(config.texture_angle)]
-    spacings = [int(s) for s in to_list(config.texture_line_spacing)]
+    spacings = [int(s) for s in to_list(config.texture_spacing)]
     scales = [float(sc) for sc in to_list(config.texture_scale)]
     target_regions = to_list(config.target_region)
     asset_images = to_list(config.texture_asset_image)
@@ -341,18 +347,18 @@ def generate_all(config: ManipulatedTexturesConfig):
         writer = csv.writer(annfile)
         writer.writerow(
             [
-                "Path",
+                "IterNum",
                 "Class",
                 "TargetRegion",
                 "TextureMode",
+                "TextureScale",
+                "TextureSpacing",
                 "TextureAssetImage",
                 "TextureText",
                 "TextureAngle",
-                "TextureLineSpacing",
-                "TextureScale",
-                "BackgroundColor",
                 "TextureColor",
-                "IterNum",
+                "BackgroundColor",
+                "Path",
             ]
         )
 
@@ -370,7 +376,7 @@ def generate_all(config: ManipulatedTexturesConfig):
                     target_region=t_region,
                     texture_mode=t_mode,
                     texture_color=config.texture_color,
-                    texture_line_spacing=t_spacing,
+                    texture_spacing=t_spacing,
                     texture_scale=t_scale,
                     texture_angle=t_angle,
                     texture_asset_image=t_asset,
@@ -409,18 +415,18 @@ def generate_all(config: ManipulatedTexturesConfig):
                 img.save(output_folder / path)
                 writer.writerow(
                     [
-                        path,
+                        n,
                         class_name,
                         t_region,
                         t_mode,
+                        t_scale,
+                        t_spacing,
                         t_asset,
                         t_text,
                         t_angle,
-                        t_spacing,
-                        t_scale,
                         ds.background,
                         config.texture_color,
-                        n,
+                        path,
                     ]
                 )
                 n += 1
