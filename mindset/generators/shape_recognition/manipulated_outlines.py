@@ -2,7 +2,6 @@ import csv
 import itertools
 import math
 import random
-from importlib import resources
 from dataclasses import dataclass, field
 from pathlib import Path
 

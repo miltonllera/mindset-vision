@@ -68,7 +68,7 @@ def _parse_generator_args(config_cls, remaining):
 
     gen_args, unknown = gen_parser.parse_known_args(remaining)
     if unknown:
-        print(f"warning: unrecognized arguments: {' '.join(unknown)}")
+        raise RuntimeError(f"warning: unrecognized arguments: {' '.join(unknown)}")
     return {k: v for k, v in vars(gen_args).items() if v is not None}
 
 

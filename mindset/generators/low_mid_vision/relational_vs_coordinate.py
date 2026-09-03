@@ -45,9 +45,15 @@ class LineNode:
 
     def get_segment(self):
         if self.orientation == 'V':
-            return ((self.branch_x, self.branch_y - self.L_neg), (self.branch_x, self.branch_y + self.L_pos))
+            return (
+                (self.branch_x, self.branch_y - self.L_neg),
+                (self.branch_x, self.branch_y + self.L_pos)
+            )
         else:
-            return ((self.branch_x - self.L_neg, self.branch_y), (self.branch_x + self.L_pos, self.branch_y))
+            return (
+                (self.branch_x - self.L_neg, self.branch_y),
+                (self.branch_x + self.L_pos, self.branch_y)
+            )
 
 
 def get_max_extension(x0, y0, direction, other_segments, margin=30):
@@ -183,13 +189,19 @@ def make_stimulus_triplet(root_orientation, margin=30):
         parent_node = l1_nodes[l2_parent_idx - 1]
         other_l1_node = l1_nodes[2 - l2_parent_idx]
 
-        parent_min = parent_node.branch_x - parent_node.L_neg if parent_node.orientation == 'H' else parent_node.branch_y - parent_node.L_neg
-        parent_max = parent_node.branch_x + parent_node.L_pos if parent_node.orientation == 'H' else parent_node.branch_y + parent_node.L_pos
+        parent_min = parent_node.branch_x - parent_node.L_neg if parent_node.orientation == 'H' \
+            else parent_node.branch_y - parent_node.L_neg
+        parent_max = parent_node.branch_x + parent_node.L_pos if parent_node.orientation == 'H' \
+            else parent_node.branch_y + parent_node.L_pos
 
         if parent_node.neg_is_long:
-            br_val = random.uniform(parent_min + 0.25 * parent_node.L_neg, parent_min + 0.75 * parent_node.L_neg)
+            br_val = random.uniform(
+                parent_min + 0.25 * parent_node.L_neg, parent_min + 0.75 * parent_node.L_neg
+            )
         else:
-            br_val = random.uniform(parent_max - 0.75 * parent_node.L_pos, parent_max - 0.25 * parent_node.L_pos)
+            br_val = random.uniform(
+                parent_max - 0.75 * parent_node.L_pos, parent_max - 0.25 * parent_node.L_pos
+            )
 
         l2_neg_is_long = random.choice([True, False])
         if l2_neg_is_long:
@@ -392,12 +404,20 @@ class DrawRelationalVsCoordinate(DrawStimuli):
                 # Perpendicular bars centered at ends
                 if line.orientation == 'V':
                     ((x, y_start), (_, y_end)) = seg
-                    self.draw_rounded_line(draw, (x - bar_len, y_start), (x + bar_len, y_start), line_width)
-                    self.draw_rounded_line(draw, (x - bar_len, y_end), (x + bar_len, y_end), line_width)
+                    self.draw_rounded_line(
+                        draw, (x - bar_len, y_start), (x + bar_len, y_start), line_width
+                    )
+                    self.draw_rounded_line(
+                        draw, (x - bar_len, y_end), (x + bar_len, y_end), line_width
+                    )
                 else:
                     ((x_start, y), (x_end, _)) = seg
-                    self.draw_rounded_line(draw, (x_start, y - bar_len), (x_start, y + bar_len), line_width)
-                    self.draw_rounded_line(draw, (x_end, y - bar_len), (x_end, y + bar_len), line_width)
+                    self.draw_rounded_line(
+                        draw, (x_start, y - bar_len), (x_start, y + bar_len), line_width
+                    )
+                    self.draw_rounded_line(
+                        draw, (x_end, y - bar_len), (x_end, y + bar_len), line_width
+                    )
 
             # Cue line has a bar at the designated end only if has_cue_bar is True
             if line.is_cue_line and has_cue_bar:
@@ -529,7 +549,10 @@ def generate_all(config: RelationalVsCoordinateConfig):
 
             # Save basis image
             basis_img = ds.draw_tree_on_virtual_canvas(
-                [root, *l1_nodes, l2_node], line_width=line_width, bar_len=bar_len, has_cue_bar=config.has_cue_bar
+                [root, *l1_nodes, l2_node],
+                line_width=line_width,
+                bar_len=bar_len,
+                has_cue_bar=config.has_cue_bar
             )
             basis_canvas = ds.process_virtual_image(basis_img)
             basis_path = Path("basis") / f"{n}_{unique_hex}.png"
@@ -537,7 +560,10 @@ def generate_all(config: RelationalVsCoordinateConfig):
 
             # Save coordinate change image
             coord_img = ds.draw_tree_on_virtual_canvas(
-                [root_c, *l1_nodes_coord, l2_coord], line_width=line_width, bar_len=bar_len, has_cue_bar=config.has_cue_bar
+                [root_c, *l1_nodes_coord, l2_coord],
+                line_width=line_width,
+                bar_len=bar_len,
+                has_cue_bar=config.has_cue_bar
             )
             coord_canvas = ds.process_virtual_image(coord_img)
             coord_path = Path("coordinate_change") / f"{n}_{unique_hex}.png"
@@ -545,7 +571,10 @@ def generate_all(config: RelationalVsCoordinateConfig):
 
             # Save relation change image
             rel_img = ds.draw_tree_on_virtual_canvas(
-                [root, *l1_nodes, l2_flipped], line_width=line_width, bar_len=bar_len, has_cue_bar=config.has_cue_bar
+                [root, *l1_nodes, l2_flipped],
+                line_width=line_width,
+                bar_len=bar_len,
+                has_cue_bar=config.has_cue_bar
             )
             rel_canvas = ds.process_virtual_image(rel_img)
             rel_path = Path("relation_change") / f"{n}_{unique_hex}.png"
